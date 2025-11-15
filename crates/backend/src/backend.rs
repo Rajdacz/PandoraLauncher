@@ -85,8 +85,6 @@ pub fn start(send: FrontendHandle, self_handle: BackendHandle, recv: Receiver<Me
         directories: Arc::clone(&directories),
         launcher: Launcher::new(meta, directories, send),
         mod_metadata_manager: Arc::new(mod_metadata_manager),
-        // todo: replace notify tick with a call to self_handle
-        notify_tick: Arc::new(tokio::sync::Notify::new()),
         reload_mods_immediately: HashSet::new(),
         account_info,
         secret_storage: OnceCell::new(),
@@ -124,7 +122,6 @@ pub struct BackendState {
     pub directories: Arc<LauncherDirectories>,
     pub launcher: Launcher,
     pub mod_metadata_manager: Arc<ModMetadataManager>,
-    pub notify_tick: Arc<tokio::sync::Notify>,
     pub reload_mods_immediately: HashSet<InstanceID>,
     pub account_info: BackendAccountInfo,
     pub secret_storage: OnceCell<PlatformSecretStorage>,
@@ -294,9 +291,6 @@ impl BackendState {
                         break;
                     }
                 },
-                _ = self.notify_tick.notified() => {
-                    self.handle_notify_tick().await;
-                },
                 _ = interval.tick() => {
                     self.handle_tick().await;
                 }
@@ -313,37 +307,6 @@ impl BackendState {
             {
                 instance.child = None;
                 self.send.send(instance.create_modify_message()).await;
-            }
-        }
-    }
-
-    async fn handle_notify_tick(&mut self) {
-        for (_, instance) in &mut self.instances {
-            if let Some(summaries) = instance.finish_loading_worlds().await {
-                self.send.send(MessageToFrontend::InstanceWorldsUpdated {
-                    id: instance.id,
-                    worlds: Arc::clone(&summaries)
-                }).await;
-
-                for summary in summaries.iter() {
-                    if self.watcher.watch(&summary.level_path, notify::RecursiveMode::NonRecursive).is_ok() {
-                        self.watching.insert(summary.level_path.clone(), WatchTarget::InstanceWorldDir {
-                            id: instance.id,
-                        });
-                    }
-                }
-            }
-            if let Some(summaries) = instance.finish_loading_servers().await {
-                self.send.send(MessageToFrontend::InstanceServersUpdated {
-                    id: instance.id,
-                    servers: Arc::clone(&summaries)
-                }).await;
-            }
-            if let Some(summaries) = instance.finish_loading_mods().await {
-                self.send.send(MessageToFrontend::InstanceModsUpdated {
-                    id: instance.id,
-                    mods: Arc::clone(&summaries)
-                }).await;
             }
         }
     }
@@ -563,6 +526,51 @@ impl BackendState {
                 head_png_32x,
             }).await;
         });
+    }
+
+    pub async fn finished_loading_worlds(&mut self, id: InstanceID, serial: bridge::serial::Serial) {
+        if let Some(instance) = self.instances.get_mut(id.index) && instance.id == id {
+            if let Some(summaries) = instance.finish_loading_worlds(serial).await {
+                self.send.send(MessageToFrontend::InstanceWorldsUpdated {
+                    id: instance.id,
+                    worlds: Arc::clone(&summaries)
+                }).await;
+
+                for summary in summaries.iter() {
+                    if self.watcher.watch(&summary.level_path, notify::RecursiveMode::NonRecursive).is_ok() {
+                        self.watching.insert(summary.level_path.clone(), WatchTarget::InstanceWorldDir {
+                            id: instance.id,
+                        });
+                    }
+                }
+            }
+        }
+    }
+
+    pub async fn finished_loading_servers(&mut self, id: InstanceID, serial: bridge::serial::Serial) {
+        if let Some(instance) = self.instances.get_mut(id.index) && instance.id == id {
+            if let Some(summaries) = instance.finish_loading_servers(serial).await {
+                self.send.send(MessageToFrontend::InstanceServersUpdated {
+                    id: instance.id,
+                    servers: Arc::clone(&summaries)
+                }).await;
+            }
+        }
+    }
+
+    pub async fn finished_loading_mods(&mut self, id: InstanceID, serial: bridge::serial::Serial) {
+        if let Some(instance) = self.instances.get_mut(id.index) && instance.id == id {
+            Self::instance_finished_loading_mods(instance, &self.send, id, serial).await
+        }
+    }
+
+    pub async fn instance_finished_loading_mods(instance: &mut Instance, handle: &FrontendHandle, id: InstanceID, serial: bridge::serial::Serial) {
+        if let Some(summaries) = instance.finish_loading_mods(serial).await {
+            handle.send(MessageToFrontend::InstanceModsUpdated {
+                id: instance.id,
+                mods: Arc::clone(&summaries)
+            }).await;
+        }
     }
 }
 

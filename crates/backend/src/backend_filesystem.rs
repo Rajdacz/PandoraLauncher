@@ -43,10 +43,12 @@ impl BackendState {
                         continue;
                     };
 
-                    if let Some(last_event) = last_event.take()
-                        && last_event.change_or_remove_path() != next_event.change_or_remove_path()
-                    {
-                        self.handle_filesystem_event(last_event, &mut after_debounce_effects).await;
+                    if let Some(last_event) = last_event.take() {
+                        let last_path = last_event.change_or_remove_path();
+                        let new_path = next_event.change_or_remove_path();
+                        if last_path.is_none() || last_path != new_path {
+                            self.handle_filesystem_event(last_event, &mut after_debounce_effects).await;
+                        }
                     }
 
                     last_event = Some(next_event);
@@ -58,7 +60,7 @@ impl BackendState {
                     if let Some(instance) = self.instances.get_mut(id.index)
                         && instance.id == id
                     {
-                        instance.start_load_mods(&self.notify_tick, &self.mod_metadata_manager);
+                        instance.start_load_mods(self.self_handle.clone(), &self.mod_metadata_manager);
                     }
                 }
             },

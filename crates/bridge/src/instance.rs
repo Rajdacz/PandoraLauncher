@@ -66,8 +66,21 @@ pub struct InstanceModSummary {
 #[derive(Debug, Clone)]
 pub struct ModSummary {
     pub id: Arc<str>,
+    pub hash: [u8; 20],
     pub name: Arc<str>,
     pub version_str: Arc<str>,
     pub authors: Arc<str>,
     pub png_icon: Option<Arc<[u8]>>,
+    pub update_status: Arc<AtomicContentUpdateStatus>,
+}
+
+#[atomic_enum::atomic_enum]
+#[derive(PartialEq, Eq)]
+pub enum ContentUpdateStatus {
+    Unknown,
+    ManualInstall,
+    ErrorNotFound,
+    ErrorInvalidHash,
+    AlreadyUpToDate,
+    Modrinth,
 }

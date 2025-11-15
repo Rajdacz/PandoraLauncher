@@ -7,3 +7,4 @@ pub mod keep_alive;
 pub mod message;
 pub mod meta;
 pub mod modal_action;
+pub mod serial;

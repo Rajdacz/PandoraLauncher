@@ -3,7 +3,7 @@ use std::sync::{Arc, RwLock};
 use bridge::{
     handle::BackendHandle,
     install::ContentInstall,
-    instance::InstanceID,
+    instance::{InstanceID, InstanceModID},
     message::{MessageToBackend, QuickPlayLaunch},
     modal_action::ModalAction,
 };
@@ -91,4 +91,39 @@ pub fn start_install(
     });
 
     modals::generic::show_notification(window, cx, "Error installing content".into(), modal_action);
+}
+
+pub fn start_update_check(
+    instance: InstanceID,
+    backend_handle: &BackendHandle,
+    window: &mut Window,
+    cx: &mut App,
+) {
+    let modal_action = ModalAction::default();
+
+    backend_handle.blocking_send(MessageToBackend::UpdateCheck {
+        instance,
+        modal_action: modal_action.clone(),
+    });
+
+    let title: SharedString = "Checking for updates".into();
+    modals::generic::show_modal(window, cx, title, "Error checking for updates".into(), modal_action);
+}
+
+pub fn update_single_mod(
+    instance: InstanceID,
+    mod_id: InstanceModID,
+    backend_handle: &BackendHandle,
+    window: &mut Window,
+    cx: &mut App,
+) {
+    let modal_action = ModalAction::default();
+
+    backend_handle.blocking_send(MessageToBackend::UpdateMod {
+        instance,
+        mod_id,
+        modal_action: modal_action.clone(),
+    });
+
+    modals::generic::show_notification(window, cx, "Error downloading update".into(), modal_action);
 }

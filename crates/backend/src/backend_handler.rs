@@ -1,13 +1,15 @@
-use std::sync::Arc;
+use std::{path::Path, sync::{atomic::Ordering, Arc}, time::Duration};
 
 use auth::{credentials::AccountCredentials, secret::PlatformSecretStorage};
 use bridge::{
-    instance::InstanceStatus, message::{MessageToBackend, MessageToFrontend}, meta::MetadataResult, modal_action::ProgressTracker
+    install::{ContentDownload, ContentInstall, ContentInstallFile, ContentType, InstallTarget}, instance::{ContentUpdateStatus, InstanceStatus, ModSummary}, message::{MessageToBackend, MessageToFrontend}, meta::MetadataResult, modal_action::ProgressTracker
 };
-use schema::version::{LaunchArgument, LaunchArgumentValue};
+use futures::{FutureExt, TryFutureExt};
+use schema::{content::ContentSource, modrinth::{ModrinthFile, ModrinthLoader}, version::{LaunchArgument, LaunchArgumentValue}};
+use tokio::sync::Semaphore;
 
 use crate::{
-    account::{BackendAccount, MinecraftLoginInfo}, instance::InstanceInfo, launch::{ArgumentExpansionKey, LaunchError}, log_reader, metadata::items::{AssetsIndexMetadataItem, MinecraftVersionManifestMetadataItem, MinecraftVersionMetadataItem, ModrinthProjectVersionsMetadataItem, ModrinthSearchMetadataItem, MojangJavaRuntimeComponentMetadataItem, MojangJavaRuntimesMetadataItem}, BackendState, LoginError, WatchTarget
+    account::{BackendAccount, MinecraftLoginInfo}, instance::InstanceInfo, launch::{ArgumentExpansionKey, LaunchError}, log_reader, metadata::{items::{AssetsIndexMetadataItem, MinecraftVersionManifestMetadataItem, MinecraftVersionMetadataItem, ModrinthProjectVersionsMetadataItem, ModrinthSearchMetadataItem, ModrinthVersionUpdateMetadataItem, MojangJavaRuntimeComponentMetadataItem, MojangJavaRuntimesMetadataItem, VersionUpdateParameters}, manager::MetaLoadError}, mod_metadata::ModUpdateAction, BackendState, LoginError, WatchTarget
 };
 
 impl BackendState {
@@ -41,7 +43,7 @@ impl BackendState {
             },
             MessageToBackend::RequestLoadWorlds { id } => {
                 if let Some(instance) = self.instances.get_mut(id.index) && instance.id == id {
-                    instance.start_load_worlds(&self.notify_tick);
+                    instance.start_load_worlds(self.self_handle.clone());
 
                     if !instance.watching_dot_minecraft {
                         instance.watching_dot_minecraft = true;
@@ -62,7 +64,7 @@ impl BackendState {
             },
             MessageToBackend::RequestLoadServers { id } => {
                 if let Some(instance) = self.instances.get_mut(id.index) && instance.id == id {
-                    instance.start_load_servers(&self.notify_tick);
+                    instance.start_load_servers(self.self_handle.clone());
 
                     if !instance.watching_dot_minecraft {
                         instance.watching_dot_minecraft = true;
@@ -83,7 +85,7 @@ impl BackendState {
             },
             MessageToBackend::RequestLoadMods { id } => {
                 if let Some(instance) = self.instances.get_mut(id.index) && instance.id == id {
-                    instance.start_load_mods(&self.notify_tick, &self.mod_metadata_manager);
+                    instance.start_load_mods(self.self_handle.clone(), &self.mod_metadata_manager);
 
                     if !instance.watching_dot_minecraft {
                         instance.watching_dot_minecraft = true;
@@ -295,26 +297,15 @@ impl BackendState {
                     && instance.id == id
                     && let Some(instance_mod) = instance.try_get_mod(mod_id)
                 {
-                    let Some(file_name) = instance_mod.path.file_name() else {
-                        return;
-                    };
-
                     if instance_mod.enabled == enabled {
                         return;
                     }
 
-                    let new_path = if instance_mod.enabled {
-                        let mut file_name = file_name.to_owned();
-                        file_name.push(".disabled");
-                        instance_mod.path.with_file_name(file_name)
+                    let mut new_path = instance_mod.path.to_path_buf();
+                    if instance_mod.enabled {
+                        new_path.add_extension("disabled");
                     } else {
-                        let file_name = file_name.to_str().unwrap();
-
-                        assert!(file_name.ends_with(".disabled"));
-
-                        let without_disabled = &file_name[..file_name.len() - ".disabled".len()];
-
-                        instance_mod.path.with_file_name(without_disabled)
+                        new_path.set_extension("");
                     };
 
                     self.reload_mods_immediately.insert(id);
@@ -350,6 +341,203 @@ impl BackendState {
                     self.reload_mods_immediately.insert(id);
                     let _ = std::fs::remove_file(&instance_mod.path);
                 }
+            },
+            MessageToBackend::UpdateCheck { instance: id, modal_action } => {
+                if let Some(instance) = self.instances.get_mut(id.index) && instance.id == id {
+                    if let Some(serial) = instance.start_load_mods(self.self_handle.clone(), &self.mod_metadata_manager) {
+                        Self::instance_finished_loading_mods(instance, &self.send, id, serial).await;
+                    }
+                    let Some(mods) = &instance.mods else {
+                        modal_action.set_finished();
+                        return;
+                    };
+
+                    let modrinth_loader = instance.loader.as_modrinth_loader();
+                    if modrinth_loader == ModrinthLoader::Unknown {
+                        modal_action.set_error_message("Unable to update instance, unsupported loader".into());
+                        modal_action.set_finished();
+                        return;
+                    }
+
+                    let tracker = ProgressTracker::new("Checking mods".into(), self.send.clone());
+                    tracker.set_total(mods.len());
+                    modal_action.trackers.push(tracker.clone());
+
+                    let semaphore = Semaphore::new(8);
+
+                    let params = VersionUpdateParameters {
+                        loaders: [modrinth_loader].into(),
+                        game_versions: [instance.version].into(),
+                    };
+
+                    let meta = self.meta.clone();
+
+                    let mut futures = Vec::new();
+
+                    struct UpdateResult {
+                        mod_summary: Arc<ModSummary>,
+                        action: ModUpdateAction,
+                    }
+
+                    { // Scope is needed so await doesn't complain about the non-send RwLockReadGuard
+                        let sources = self.mod_metadata_manager.read_content_sources();
+                        for summary in mods.iter() {
+                            let source = sources.get(&summary.mod_summary.hash).copied().unwrap_or(ContentSource::Manual);
+                            let semaphore = &semaphore;
+                            let meta = &meta;
+                            let params = &params;
+                            let tracker = &tracker;
+                            futures.push(async move {
+                                match source {
+                                    ContentSource::Manual => {
+                                        tracker.add_count(1);
+                                        tracker.notify().await;
+                                        Ok(ModUpdateAction::ManualInstall)
+                                    },
+                                    ContentSource::Modrinth => {
+                                        let permit = semaphore.acquire().await.unwrap();
+                                        let result = meta.fetch(&ModrinthVersionUpdateMetadataItem {
+                                            sha1: hex::encode(summary.mod_summary.hash).into(),
+                                            params: params.clone()
+                                        }).await;
+                                        drop(permit);
+
+                                        tracker.add_count(1);
+                                        tracker.notify().await;
+
+                                        if let Err(MetaLoadError::NonOK(404)) = result {
+                                            return Ok(ModUpdateAction::ErrorNotFound);
+                                        }
+
+                                        let result = result?;
+
+                                        let install_file = result
+                                            .0
+                                            .files
+                                            .iter()
+                                            .find(|file| file.primary)
+                                            .unwrap_or(result.0.files.first().unwrap());
+
+                                        let mut latest_hash = [0u8; 20];
+                                        let Ok(_) = hex::decode_to_slice(&*install_file.hashes.sha1, &mut latest_hash) else {
+                                            return Ok(ModUpdateAction::ErrorInvalidHash);
+                                        };
+
+                                        if latest_hash == summary.mod_summary.hash {
+                                            Ok(ModUpdateAction::AlreadyUpToDate)
+                                        } else {
+                                            Ok(ModUpdateAction::Modrinth(install_file.clone()))
+                                        }
+                                    },
+                                }
+                            }.map_ok(|action| UpdateResult {
+                                mod_summary: summary.mod_summary.clone(),
+                                action,
+                            }));
+                        }
+                        drop(sources);
+                    }
+
+                    let results: Result<Vec<UpdateResult>, MetaLoadError> = futures::future::try_join_all(futures).await;
+
+                    match results {
+                        Ok(updates) => {
+                            let mut meta_updates = self.mod_metadata_manager.updates.write().unwrap();
+
+                            for update in updates {
+                                update.mod_summary.update_status.store(update.action.to_status(), Ordering::Relaxed);
+                                meta_updates.insert(update.mod_summary.hash, update.action);
+                            }
+                        },
+                        Err(error) => {
+                            tracker.set_finished(true);
+                            modal_action.set_error_message(format!("Error checking for updates: {}", error).into());
+                            modal_action.set_finished();
+                            return;
+                        },
+                    }
+
+                    tracker.set_finished(false);
+                    modal_action.set_finished();
+
+                    return;
+                }
+
+                self.send.send_error("Can't update instance, unknown id").await;
+                modal_action.set_error_message("Can't update instance, unknown id".into());
+                modal_action.set_finished();
+            },
+            MessageToBackend::FinishedLoadingWorlds { instance, serial } => {
+                self.finished_loading_worlds(instance, serial).await;
+            },
+            MessageToBackend::FinishedLoadingServers { instance, serial } => {
+                self.finished_loading_servers(instance, serial).await;
+            },
+            MessageToBackend::FinishedLoadingMods { instance, serial } => {
+                self.finished_loading_mods(instance, serial).await;
+            },
+            MessageToBackend::UpdateMod { instance: id, mod_id, modal_action } => {
+                if let Some(instance) = self.instances.get_mut(id.index) && instance.id == id {
+                    let Some(mod_summary) = instance.try_get_mod(mod_id) else {
+                        self.send.send_error("Can't update mod in instance, unknown mod id").await;
+                        modal_action.set_finished();
+                        return;
+                    };
+
+                    let Some(update_info) = self.mod_metadata_manager.updates.read().unwrap().get(&mod_summary.mod_summary.hash).cloned() else {
+                        self.send.send_error("Can't update mod in instance, missing update action").await;
+                        modal_action.set_finished();
+                        return;
+                    };
+
+                    match update_info {
+                        ModUpdateAction::ErrorNotFound => {
+                            self.send.send_error("Can't update mod in instance, 404 not found").await;
+                            modal_action.set_finished();
+                        },
+                        ModUpdateAction::ErrorInvalidHash => {
+                            self.send.send_error("Can't update mod in instance, returned invalid hash").await;
+                            modal_action.set_finished();
+                        },
+                        ModUpdateAction::AlreadyUpToDate => {
+                            self.send.send_error("Can't update mod in instance, already up-to-date").await;
+                            modal_action.set_finished();
+                        },
+                        ModUpdateAction::ManualInstall => {
+                            self.send.send_error("Can't update mod in instance, mod was manually installed").await;
+                            modal_action.set_finished();
+                        },
+                        ModUpdateAction::Modrinth(modrinth_file) => {
+                            let content = ContentInstall {
+                                target: InstallTarget::Instance(id),
+                                files: [ContentInstallFile {
+                                    replace: Some(mod_summary.path.clone()),
+                                    download: ContentDownload::Url {
+                                        url: modrinth_file.url.clone(),
+                                        filename: if mod_summary.enabled {
+                                            modrinth_file.filename
+                                        } else {
+                                            format!("{}.disabled", modrinth_file.filename).into()
+                                        },
+                                        sha1: modrinth_file.hashes.sha1.clone(),
+                                        size: modrinth_file.size,
+                                    },
+                                    content_type: ContentType::Mod,
+                                    content_source: ContentSource::Modrinth,
+                                }].into(),
+                            };
+                            self.install_content(content, modal_action).await;
+                        },
+                    }
+
+                    return;
+                }
+
+                self.send.send_error("Can't update mod in instance, unknown instance id").await;
+                modal_action.set_finished();
+            },
+            MessageToBackend::Sleep5s => {
+                tokio::time::sleep(Duration::from_secs(5)).await;
             },
         }
     }

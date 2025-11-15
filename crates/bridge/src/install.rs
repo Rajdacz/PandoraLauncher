@@ -1,4 +1,4 @@
-use std::{path::PathBuf, sync::Arc};
+use std::{path::{Path, PathBuf}, sync::Arc};
 
 use schema::content::ContentSource;
 
@@ -27,6 +27,7 @@ pub struct ContentInstall {
 
 #[derive(Debug, Clone)]
 pub struct ContentInstallFile {
+    pub replace: Option<Arc<Path>>,
     pub download: ContentDownload,
     pub content_type: ContentType,
     pub content_source: ContentSource,

@@ -1,14 +1,15 @@
 use std::sync::{
-    atomic::{AtomicUsize, Ordering}, Arc
+    atomic::{AtomicUsize, Ordering}, Arc, Mutex
 };
 
 use bridge::{
-    handle::BackendHandle, install::{ContentDownload, ContentInstall, ContentInstallFile, ContentType, InstallTarget}, instance::{InstanceID, InstanceModSummary}, keep_alive::KeepAliveHandle, message::{AtomicBridgeDataLoadState, MessageToBackend}
+    handle::BackendHandle, install::{ContentDownload, ContentInstall, ContentInstallFile, ContentType, InstallTarget}, instance::{InstanceID, InstanceModID, InstanceModSummary}, keep_alive::{KeepAlive, KeepAliveHandle}, message::{AtomicBridgeDataLoadState, MessageToBackend}
 };
 use gpui::{prelude::*, *};
 use gpui_component::{
     button::{Button, ButtonVariants}, h_flex, list::{ListDelegate, ListItem, ListState}, notification::{Notification, NotificationType}, switch::Switch, v_flex, ActiveTheme as _, Icon, IconName, IndexPath, Sizable, WindowExt
 };
+use rustc_hash::FxHashSet;
 use schema::content::ContentSource;
 
 use crate::{entity::instance::InstanceEntry, png_render_cache, root::LauncherRootGlobal};
@@ -18,7 +19,7 @@ pub struct InstanceModsSubpage {
     backend_handle: BackendHandle,
     mods_state: Arc<AtomicBridgeDataLoadState>,
     mod_list: Entity<ListState<ModsListDelegate>>,
-    checking_for_updates: Option<KeepAliveHandle>,
+    _add_from_file_task: Option<Task<()>>,
 }
 
 impl InstanceModsSubpage {
@@ -39,6 +40,7 @@ impl InstanceModsSubpage {
             mods: instance.mods.read(cx).to_vec(),
             searched: instance.mods.read(cx).to_vec(),
             confirming_delete: Arc::new(AtomicUsize::new(0)),
+            updating: Default::default(),
         };
 
         let mods = instance.mods.clone();
@@ -47,6 +49,13 @@ impl InstanceModsSubpage {
             cx.observe(&mods, |list: &mut ListState<ModsListDelegate>, mods, cx| {
                 let mods = mods.read(cx).to_vec();
                 let delegate = list.delegate_mut();
+
+                let mut updating = delegate.updating.lock().unwrap();
+                if !updating.is_empty() {
+                    let ids: FxHashSet<u64> = mods.iter().map(|summary| summary.filename_hash).collect();
+                    updating.retain(|id| ids.contains(&id));
+                }
+
                 delegate.mods = mods.clone();
                 delegate.searched = mods;
                 delegate.confirming_delete.store(0, Ordering::Release);
@@ -61,7 +70,7 @@ impl InstanceModsSubpage {
             backend_handle,
             mods_state,
             mod_list,
-            checking_for_updates: None,
+            _add_from_file_task: None,
         }
     }
 }
@@ -75,27 +84,23 @@ impl Render for InstanceModsSubpage {
             self.backend_handle.blocking_send(MessageToBackend::RequestLoadMods { id: self.instance });
         }
 
-        let update_label = if self.checking_for_updates.is_some() {
-            "Checking for updates..."
-        } else {
-            "Check for updates"
-        };
-
         let header = h_flex()
             .gap_4()
             .mb_1()
             .ml_1()
             .child(div().text_lg().underline().child("Mods"))
-            .child(Button::new("update").label(update_label).loading(self.checking_for_updates.is_some()).success().compact().small().on_click({
-                cx.listener(move |this, _, _, _| {
-                    todo!();
-                    // if this.checking_for_updates.is_none() {
-                    //     let keep_alive = KeepAlive::new();
-                    //     let handle = keep_alive.create_handle();
-                    //     this.checking_for_updates = Some(handle);
-                    //     forget(keep_alive);
-                    // }
-                })
+            .child(Button::new("sleep5s").label("Sleep 5s").success().compact().small().on_click({
+                let backend_handle = self.backend_handle.clone();
+                move |_, _, _| {
+                    backend_handle.blocking_send(MessageToBackend::Sleep5s);
+                }
+            }))
+            .child(Button::new("update").label("Check for updates").success().compact().small().on_click({
+                let backend_handle = self.backend_handle.clone();
+                let instance_id = self.instance;
+                move |_, window, cx| {
+                    crate::root::start_update_check(instance_id, &backend_handle, window, cx);
+                }
             }))
             .child(Button::new("addmr").label("Add from Modrinth").success().compact().small().on_click({
                 let instance = self.instance;
@@ -113,17 +118,16 @@ impl Render for InstanceModsSubpage {
             .child(Button::new("addfile").label("Add from file").success().compact().small().on_click({
                 let backend_handle = self.backend_handle.clone();
                 let instance = self.instance;
-                move |_, window, cx| {
+                cx.listener(move |this, _, window, cx| {
                     let receiver = cx.prompt_for_paths(PathPromptOptions {
                         files: true,
                         directories: false,
                         multiple: true,
                         prompt: Some("Select mods to install".into())
                     });
-                    // todo: store future instead of detaching
 
                     let backend_handle = backend_handle.clone();
-                    window.spawn(cx, async move |cx| {
+                    let add_from_file_task = window.spawn(cx, async move |cx| {
                         let Ok(result) = receiver.await else {
                             return;
                         };
@@ -134,6 +138,7 @@ impl Render for InstanceModsSubpage {
                                         target: InstallTarget::Instance(instance),
                                         files: paths.into_iter().map(|path| {
                                             ContentInstallFile {
+                                                replace: None,
                                                 download: ContentDownload::File { path },
                                                 content_type: ContentType::Mod,
                                                 content_source: ContentSource::Manual,
@@ -153,8 +158,9 @@ impl Render for InstanceModsSubpage {
                                 },
                             }
                         });
-                    }).detach();
-                }
+                    });
+                    this._add_from_file_task = Some(add_from_file_task);
+                })
             }));
 
         v_flex().p_4().size_full().child(header).child(
@@ -174,6 +180,7 @@ pub struct ModsListDelegate {
     mods: Vec<InstanceModSummary>,
     searched: Vec<InstanceModSummary>,
     confirming_delete: Arc<AtomicUsize>,
+    updating: Arc<Mutex<FxHashSet<u64>>>,
 }
 
 impl ListDelegate for ModsListDelegate {
@@ -225,31 +232,68 @@ impl ListDelegate for ModsListDelegate {
             })
         };
 
-        // let cant_update_icon = Icon::default().path("icons/arrow-down-to-dot.svg");
-        // let update_icon = Icon::default().path("icons/arrow-down-to-line.svg");
+        let update_button = match summary.mod_summary.update_status.load(Ordering::Relaxed) {
+            bridge::instance::ContentUpdateStatus::Unknown => None,
+            bridge::instance::ContentUpdateStatus::ManualInstall => Some(
+                Button::new(("update", element_id)).warning().icon(Icon::default().path("icons/file-question-mark.svg"))
+                    .tooltip("Mod was installed manually - cannot automatically update")
+            ),
+            bridge::instance::ContentUpdateStatus::ErrorNotFound => Some(
+                Button::new(("update", element_id)).danger().icon(Icon::default().path("icons/triangle-alert.svg"))
+                    .tooltip("Error while checking updates - 404 not found")
+            ),
+            bridge::instance::ContentUpdateStatus::ErrorInvalidHash => Some(
+                Button::new(("update", element_id)).danger().icon(Icon::default().path("icons/triangle-alert.svg"))
+                    .tooltip("Error while checking updates - returned invalid hash")
+            ),
+            bridge::instance::ContentUpdateStatus::AlreadyUpToDate => Some(
+                Button::new(("update", element_id)).icon(Icon::default().path("icons/check.svg"))
+                    .tooltip("Mod is already up-to-date")
+            ),
+            bridge::instance::ContentUpdateStatus::Modrinth => {
+                let loading = self.updating.lock().unwrap().contains(&element_id);
+                Some(
+                    Button::new(("update", element_id)).success().loading(loading).icon(Icon::default().path("icons/download.svg"))
+                        .tooltip("Download update from Modrinth").on_click({
+                            let backend_handle = self.backend_handle.clone();
+                            let updating = self.updating.clone();
+                            move |_, window, cx| {
+                                updating.lock().unwrap().insert(element_id);
+                                crate::root::update_single_mod(id, mod_id, &backend_handle, window, cx);
+                            }
+                        })
+                )
+            },
+        };
 
         let backend_handle = self.backend_handle.clone();
-        let item = ListItem::new(("item", element_id)).p_1().child(
-            h_flex()
-                .gap_1()
-                .child(
-                    Switch::new(("toggle", element_id))
-                        .checked(summary.enabled)
-                        .on_click(move |checked, _, _| {
-                            backend_handle.blocking_send(MessageToBackend::SetModEnabled {
-                                id,
-                                mod_id,
-                                enabled: *checked,
-                            });
-                        })
-                        .px_2(),
-                )
-                .child(icon.size_16().min_w_16().min_h_16().grayscale(!summary.enabled))
-                .when(!summary.enabled, |this| this.line_through())
-                .child(description1)
-                .child(description2)
-                .child(delete_button.absolute().right_4()),
-        );
+
+        let mut item_content = h_flex()
+            .gap_1()
+            .child(
+                Switch::new(("toggle", element_id))
+                    .checked(summary.enabled)
+                    .on_click(move |checked, _, _| {
+                        backend_handle.blocking_send(MessageToBackend::SetModEnabled {
+                            id,
+                            mod_id,
+                            enabled: *checked,
+                        });
+                    })
+                    .px_2(),
+            )
+            .child(icon.size_16().min_w_16().min_h_16().grayscale(!summary.enabled))
+            .when(!summary.enabled, |this| this.line_through())
+            .child(description1)
+            .child(description2);
+
+        if let Some(update_button) = update_button {
+            item_content = item_content.child(h_flex().absolute().right_4().gap_2().child(update_button).child(delete_button))
+        } else {
+            item_content = item_content.child(delete_button.absolute().right_4())
+        }
+
+        let item = ListItem::new(("item", element_id)).p_1().child(item_content);
 
         Some(item)
     }

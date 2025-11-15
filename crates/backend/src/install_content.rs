@@ -1,4 +1,4 @@
-use std::{ffi::OsString, io::Write, path::PathBuf, sync::Arc};
+use std::{ffi::OsString, io::Write, path::{Path, PathBuf}, sync::Arc};
 
 use bridge::{
     install::{ContentDownload, ContentInstall, ContentInstallFile, ContentType},
@@ -29,6 +29,7 @@ pub enum ContentInstallError {
 
 struct InstallFromContentLibrary {
     from: PathBuf,
+    replace: Option<Arc<Path>>,
     hash: [u8; 20],
     filename: OsString,
     content_file: ContentInstallFile,
@@ -36,8 +37,6 @@ struct InstallFromContentLibrary {
 
 impl BackendState {
     pub async fn install_content(&mut self, content: ContentInstall, modal_action: ModalAction) {
-        // todo: check library for hash already on disk!
-
         for content_file in content.files.iter() {
             let ContentDownload::Url { filename, .. } = &content_file.download else {
                 continue;
@@ -88,6 +87,7 @@ impl BackendState {
                             tracker.notify().await;
                             return Ok(InstallFromContentLibrary {
                                 from: path,
+                                replace: content_file.replace.clone(),
                                 hash: expected_hash,
                                 filename: OsString::from(&**filename),
                                 content_file: content_file.clone(),
@@ -127,6 +127,7 @@ impl BackendState {
 
                         Ok(InstallFromContentLibrary {
                             from: path,
+                            replace: content_file.replace.clone(),
                             hash: expected_hash,
                             filename: OsString::from(&**filename),
                             content_file: content_file.clone(),
@@ -175,6 +176,7 @@ impl BackendState {
                         tracker.notify().await;
                         return Ok(InstallFromContentLibrary {
                             from: path,
+                            replace: content_file.replace.clone(),
                             hash: hash.into(),
                             filename: filename.into(),
                             content_file: content_file.clone(),
@@ -223,10 +225,14 @@ impl BackendState {
                                 target_path.push("shaderpacks");
                             },
                         }
-                        let _ = tokio::fs::create_dir_all(&target_path).await;
+                        let _ = std::fs::create_dir_all(&target_path);
                         target_path.push(install.filename);
 
-                        let _ = tokio::fs::hard_link(install.from, target_path).await;
+                        // Use std::fs instead of tokio::fs to ensure that remove and hard_link can't be interrupted
+                        if let Some(replace) = install.replace {
+                            let _ = std::fs::remove_file(replace);
+                        }
+                        let _ = std::fs::hard_link(install.from, target_path);
                     }
                 }
             },

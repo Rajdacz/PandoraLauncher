@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use tokio::sync::mpsc::Sender;
 
-use crate::message::{BridgeNotificationType, MessageToBackend, MessageToFrontend};
+use crate::{message::{BridgeNotificationType, MessageToBackend, MessageToFrontend}};
 
 #[derive(Clone, Debug)]
 pub struct BackendHandle {
@@ -20,11 +20,19 @@ impl From<Sender<MessageToBackend>> for BackendHandle {
 
 impl BackendHandle {
     pub async fn send(&self, message: MessageToBackend) {
-        let _ = self.sender.send(message).await;
+        if cfg!(debug_assertions) {
+            self.sender.try_send(message).unwrap();
+        } else {
+            let _ = self.sender.send(message).await;
+        }
     }
 
     pub fn blocking_send(&self, message: MessageToBackend) {
-        let _ = self.sender.blocking_send(message);
+        if cfg!(debug_assertions) {
+            self.sender.try_send(message).unwrap();
+        } else {
+            let _ = self.sender.blocking_send(message);
+        }
     }
 
     pub fn is_closed(&self) -> bool {
@@ -48,11 +56,19 @@ impl From<Sender<MessageToFrontend>> for FrontendHandle {
 
 impl FrontendHandle {
     pub async fn send(&self, message: MessageToFrontend) {
-        let _ = self.sender.send(message).await;
+        if cfg!(debug_assertions) {
+            self.sender.try_send(message).unwrap();
+        } else {
+            let _ = self.sender.send(message).await;
+        }
     }
 
     pub fn blocking_send(&self, message: MessageToFrontend) {
-        let _ = self.sender.blocking_send(message);
+        if cfg!(debug_assertions) {
+            self.sender.try_send(message).unwrap();
+        } else {
+            let _ = self.sender.blocking_send(message);
+        }
     }
 
     pub async fn send_info(&self, info: impl Into<Arc<str>>) {

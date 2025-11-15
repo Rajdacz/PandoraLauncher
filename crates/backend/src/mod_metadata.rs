@@ -1,22 +1,44 @@
 use std::{
-    collections::HashMap, fs::File, io::{Cursor, Read}, path::{Path, PathBuf}, sync::Arc
+    collections::HashMap, fs::File, io::{Cursor, Read}, path::{Path, PathBuf}, sync::{Arc, RwLockReadGuard}
 };
 
-use bridge::instance::ModSummary;
+use bridge::instance::{AtomicContentUpdateStatus, ContentUpdateStatus, ModSummary};
 use image::imageops::FilterType;
 use rustc_hash::FxHashMap;
-use schema::content::ContentSource;
+use schema::{content::ContentSource, modrinth::ModrinthFile};
 use serde::{Deserialize, Serialize};
 use serde_with::{serde_as, DeserializeAs, SerializeAs};
 use sha1::{Digest, Sha1};
 use std::sync::RwLock;
 use zip::read::ZipFile;
 
+#[derive(Clone)]
+pub enum ModUpdateAction {
+    ErrorNotFound,
+    ErrorInvalidHash,
+    AlreadyUpToDate,
+    ManualInstall,
+    Modrinth(ModrinthFile),
+}
+
+impl ModUpdateAction {
+    pub fn to_status(&self) -> ContentUpdateStatus {
+        match self {
+            ModUpdateAction::ErrorNotFound => ContentUpdateStatus::ErrorNotFound,
+            ModUpdateAction::ErrorInvalidHash => ContentUpdateStatus::ErrorInvalidHash,
+            ModUpdateAction::AlreadyUpToDate => ContentUpdateStatus::AlreadyUpToDate,
+            ModUpdateAction::ManualInstall => ContentUpdateStatus::ManualInstall,
+            ModUpdateAction::Modrinth(_) => ContentUpdateStatus::Modrinth,
+        }
+    }
+}
+
 pub struct ModMetadataManager {
     _content_meta_dir: Arc<Path>,
     sources_json: PathBuf,
     by_hash: RwLock<FxHashMap<[u8; 20], Option<Arc<ModSummary>>>>,
     content_sources: RwLock<FxHashMap<[u8; 20], ContentSource>>,
+    pub updates: RwLock<FxHashMap<[u8; 20], ModUpdateAction>>,
 }
 
 impl ModMetadataManager {
@@ -35,7 +57,12 @@ impl ModMetadataManager {
             sources_json,
             by_hash: Default::default(),
             content_sources: RwLock::new(content_sources),
+            updates: Default::default(),
         }
+    }
+
+    pub fn read_content_sources(&self) -> RwLockReadGuard<'_, FxHashMap<[u8; 20], ContentSource>> {
+        self.content_sources.read().unwrap()
     }
 
     pub fn set_content_sources(&self, sources: impl Iterator<Item = ([u8; 20], ContentSource)>) {
@@ -68,14 +95,14 @@ impl ModMetadataManager {
             return summary.clone();
         }
 
-        let summary = Self::load_mod_summary(file);
+        let summary = Self::load_mod_summary(actual_hash, file);
 
         self.by_hash.write().unwrap().insert(actual_hash, summary.clone());
 
         summary
     }
 
-    fn load_mod_summary(file: &mut std::fs::File) -> Option<Arc<ModSummary>> {
+    fn load_mod_summary(hash: [u8; 20], file: &mut std::fs::File) -> Option<Arc<ModSummary>> {
         let mut archive = zip::ZipArchive::new(file).ok()?;
         let file = match archive.by_name("fabric.mod.json") {
             Ok(file) => file,
@@ -122,10 +149,12 @@ impl ModMetadataManager {
 
         Some(Arc::new(ModSummary {
             id: fabric_mod_json.id,
+            hash,
             name,
             authors,
             version_str: format!("v{}", fabric_mod_json.version).into(),
             png_icon,
+            update_status: Arc::new(AtomicContentUpdateStatus::new(ContentUpdateStatus::Unknown)),
         }))
     }
 }

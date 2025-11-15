@@ -5,9 +5,9 @@ use std::{
 
 use reqwest::RequestBuilder;
 use schema::{
-    assets_index::AssetsIndex, fabric_launch::FabricLaunch, fabric_loader_manifest::{FabricLoaderManifest, FABRIC_LOADER_MANIFEST_URL}, java_runtime_component::JavaRuntimeComponentManifest, java_runtimes::{JavaRuntimes, JAVA_RUNTIMES_URL}, modrinth::{ModrinthProjectVersionsRequest, ModrinthProjectVersionsResult, ModrinthSearchRequest, ModrinthSearchResult, MODRINTH_SEARCH_URL}, version::MinecraftVersion, version_manifest::{MinecraftVersionLink, MinecraftVersionManifest, MOJANG_VERSION_MANIFEST_URL}
+    assets_index::AssetsIndex, fabric_launch::FabricLaunch, fabric_loader_manifest::{FabricLoaderManifest, FABRIC_LOADER_MANIFEST_URL}, java_runtime_component::JavaRuntimeComponentManifest, java_runtimes::{JavaRuntimes, JAVA_RUNTIMES_URL}, modrinth::{ModrinthLoader, ModrinthProjectVersionsRequest, ModrinthProjectVersionsResult, ModrinthSearchRequest, ModrinthSearchResult, ModrinthVersionFileUpdateResult, MODRINTH_SEARCH_URL}, version::MinecraftVersion, version_manifest::{MinecraftVersionLink, MinecraftVersionManifest, MOJANG_VERSION_MANIFEST_URL}
 };
-use serde::de::DeserializeOwned;
+use serde::{de::DeserializeOwned, Serialize};
 use ustr::Ustr;
 
 use crate::metadata::manager::{MetaLoadStateWrapper, MetadataManager, MetadataManagerStates};
@@ -246,5 +246,33 @@ impl<'a> MetadataItem for ModrinthProjectVersionsMetadataItem<'a> {
 
     fn state(&self, states: &mut MetadataManagerStates) -> MetaLoadStateWrapper<Self::T> {
         states.modrinth_project_versions.entry(self.0.project_id.clone()).or_default().clone()
+    }
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct VersionUpdateParameters {
+    pub loaders: Arc<[ModrinthLoader]>,
+    pub game_versions: Arc<[Ustr]>,
+}
+
+pub struct ModrinthVersionUpdateMetadataItem {
+    pub sha1: Arc<str>,
+    pub params: VersionUpdateParameters,
+}
+
+impl<'a> MetadataItem for ModrinthVersionUpdateMetadataItem {
+    type T = ModrinthVersionFileUpdateResult;
+
+    fn request(&self, client: &reqwest::Client) -> RequestBuilder {
+        let url = format!("https://api.modrinth.com/v2/version_file/{}/update", self.sha1);
+        client.post(url).json(&self.params)
+    }
+
+    fn expires(&self) -> bool {
+        true
+    }
+
+    fn state(&self, states: &mut MetadataManagerStates) -> MetaLoadStateWrapper<Self::T> {
+        states.modrinth_version_updates.entry(self.sha1.clone()).or_default().clone()
     }
 }

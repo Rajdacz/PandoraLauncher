@@ -600,6 +600,7 @@ impl InstallDialog {
                             let content_install = ContentInstall {
                                 target: this.target.unwrap(),
                                 files: [ContentInstallFile {
+                                    replace: None,
                                     download: ContentDownload::Url {
                                         url: install_file.url.clone(),
                                         filename: install_file.filename.clone(),

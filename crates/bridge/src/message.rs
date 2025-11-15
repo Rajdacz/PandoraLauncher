@@ -7,7 +7,7 @@ use uuid::Uuid;
 use crate::{
     account::Account, game_output::GameOutputLogLevel, install::ContentInstall, instance::{
         InstanceID, InstanceModID, InstanceModSummary, InstanceServerSummary, InstanceStatus, InstanceWorldSummary,
-    }, keep_alive::{KeepAlive, KeepAliveHandle}, meta::{MetadataRequest, MetadataResult}, modal_action::ModalAction
+    }, keep_alive::{KeepAlive, KeepAliveHandle}, meta::{MetadataRequest, MetadataResult}, modal_action::ModalAction, serial::Serial
 };
 
 #[derive(Debug)]
@@ -57,6 +57,16 @@ pub enum MessageToBackend {
         modal_action: ModalAction,
     },
     DownloadAllMetadata,
+    UpdateCheck { instance: InstanceID, modal_action: ModalAction },
+    FinishedLoadingWorlds { instance: InstanceID, serial: Serial },
+    FinishedLoadingServers { instance: InstanceID, serial: Serial },
+    FinishedLoadingMods { instance: InstanceID, serial: Serial },
+    UpdateMod {
+        instance: InstanceID,
+        mod_id: InstanceModID,
+        modal_action: ModalAction,
+    },
+    Sleep5s,
 }
 
 #[derive(Debug)]

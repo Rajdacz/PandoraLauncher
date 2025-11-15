@@ -102,14 +102,18 @@ impl Render for InstanceQuickplaySubpage {
 
         let state = self.worlds_state.load(Ordering::SeqCst);
         if state.should_send_load_request() {
+            dbg!();
             self.backend_handle
                 .blocking_send(MessageToBackend::RequestLoadWorlds { id: self.instance });
+            dbg!();
         }
 
         let state = self.servers_state.load(Ordering::SeqCst);
         if state.should_send_load_request() {
+            dbg!();
             self.backend_handle
                 .blocking_send(MessageToBackend::RequestLoadServers { id: self.instance });
+            dbg!();
         }
 
         v_flex().p_4().gap_4().size_full().child(

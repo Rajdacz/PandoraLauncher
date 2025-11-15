@@ -8,7 +8,7 @@ use std::{
 use bridge::keep_alive::{KeepAlive, KeepAliveHandle};
 use reqwest::StatusCode;
 use schema::{
-    assets_index::AssetsIndex, fabric_launch::FabricLaunch, fabric_loader_manifest::FabricLoaderManifest, java_runtime_component::JavaRuntimeComponentManifest, java_runtimes::JavaRuntimes, modrinth::{ModrinthProjectVersionsResult, ModrinthSearchRequest, ModrinthSearchResult}, version::MinecraftVersion, version_manifest::MinecraftVersionManifest
+    assets_index::AssetsIndex, fabric_launch::FabricLaunch, fabric_loader_manifest::FabricLoaderManifest, java_runtime_component::JavaRuntimeComponentManifest, java_runtimes::JavaRuntimes, modrinth::{ModrinthProjectVersionsResult, ModrinthSearchRequest, ModrinthSearchResult, ModrinthVersionFileUpdateResult}, version::MinecraftVersion, version_manifest::MinecraftVersionManifest
 };
 use serde::Deserialize;
 use sha1::{Digest, Sha1};
@@ -32,6 +32,7 @@ pub struct MetadataManagerStates {
     pub(super) java_runtime_manifests: HashMap<Ustr, MetaLoadStateWrapper<JavaRuntimeComponentManifest>>,
     pub(super) modrinth_search: HashMap<ModrinthSearchRequest, MetaLoadStateWrapper<ModrinthSearchResult>>,
     pub(super) modrinth_project_versions: HashMap<Arc<str>, MetaLoadStateWrapper<ModrinthProjectVersionsResult>>,
+    pub(super) modrinth_version_updates: HashMap<Arc<str>, MetaLoadStateWrapper<ModrinthVersionFileUpdateResult>>,
 }
 
 pub struct MetadataManager {
@@ -297,17 +298,19 @@ impl MetadataManager {
 
                 let status = response.status();
                 if status != StatusCode::OK {
-                    if let Ok(bytes) = response.bytes().await {
-                        #[derive(Deserialize)]
-                        struct ErrorMessages {
-                            error: Arc<str>,
-                            description: Option<Arc<str>>,
-                        }
-                        if let Ok(error_messages) = serde_json::from_slice::<ErrorMessages>(&bytes) {
-                            if let Some(description) = error_messages.description {
-                                return Err(MetaLoadError::ErrorWithDescription(error_messages.error, description));
-                            } else {
-                                return Err(MetaLoadError::Error(error_messages.error));
+                    if status == StatusCode::BAD_REQUEST {
+                        if let Ok(bytes) = response.bytes().await {
+                            #[derive(Deserialize)]
+                            struct ErrorMessages {
+                                error: Arc<str>,
+                                description: Option<Arc<str>>,
+                            }
+                            if let Ok(error_messages) = serde_json::from_slice::<ErrorMessages>(&bytes) {
+                                if let Some(description) = error_messages.description {
+                                    return Err(MetaLoadError::ErrorWithDescription(error_messages.error, description));
+                                } else {
+                                    return Err(MetaLoadError::Error(error_messages.error));
+                                }
                             }
                         }
                     }

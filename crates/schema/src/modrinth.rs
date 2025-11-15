@@ -1,6 +1,5 @@
 use std::sync::Arc;
 
-use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use ustr::Ustr;
 
@@ -40,7 +39,7 @@ pub struct ModrinthSearchResult {
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct ModrinthHit {
-    pub slug: Option<Arc<str>>,
+    // pub slug: Option<Arc<str>>,
     pub title: Option<Arc<str>>,
     pub description: Option<Arc<str>>,
     // pub categories: Option<Arc<[Arc<str>]>>,
@@ -58,7 +57,7 @@ pub struct ModrinthHit {
     // pub versions: Arc<[Arc<str>]>,
     // pub follows: usize,
     // pub date_created: DateTime<Utc>,
-    pub date_modified: DateTime<Utc>,
+    // pub date_modified: DateTime<Utc>,
     // pub latest_version: Option<Arc<str>>,
     // pub license: Arc<str>,
     // pub gallery: Option<Arc<[Arc<str>]>>,
@@ -114,7 +113,7 @@ pub struct ModrinthProjectVersion {
     pub files: Arc<[ModrinthFile]>,
 }
 
-#[derive(enumset::EnumSetType, Debug, Deserialize)]
+#[derive(enumset::EnumSetType, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum ModrinthLoader {
     // Mods
@@ -195,3 +194,6 @@ pub struct ModrinthFile {
 pub struct ModrinthHashes {
     pub sha1: Arc<str>,
 }
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct ModrinthVersionFileUpdateResult(pub ModrinthProjectVersion);
