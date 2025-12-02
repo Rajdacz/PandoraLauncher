@@ -567,7 +567,7 @@ impl BackendState {
                 let content_install = ContentInstall {
                     target: bridge::install::InstallTarget::Library,
                     files: filtered_downloads.clone().map(|file| {
-                        let path: PathBuf = typed_path::Utf8UnixPath::new(&*file.path).into();
+                        let path: PathBuf = typed_path::Utf8UnixPath::new(&*file.path).with_platform_encoding().into();
                         ContentInstallFile {
                             replace_old: None,
                             path: path.into(),
@@ -613,7 +613,7 @@ impl BackendState {
                     continue;
                 };
 
-                let dest_path: PathBuf = typed_path::Utf8UnixPath::new(&*file.path).into();
+                let dest_path: PathBuf = typed_path::Utf8UnixPath::new(&*file.path).with_platform_encoding().into();
                 if !crate::is_relative_normal_path(&dest_path) {
                     continue;
                 }

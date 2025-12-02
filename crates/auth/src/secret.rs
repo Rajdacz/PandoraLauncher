@@ -12,6 +12,9 @@ pub enum SecretStorageError {
     UnknownError,
     #[error("Not unique")]
     NotUnique,
+    #[cfg(target_os = "windows")]
+    #[error("Windows error")]
+    WindowsError(#[from] windows::core::Error),
 }
 
 #[cfg(target_os = "linux")]
@@ -101,6 +104,85 @@ mod inner {
             let attributes = vec![("service", "pandora-launcher"), ("uuid", uuid_str.as_str())];
 
             keyring.delete(&attributes).await?;
+            Ok(())
+        }
+    }
+}
+
+#[cfg(target_os = "windows")]
+mod inner {
+    use uuid::Uuid;
+
+    use crate::{credentials::AccountCredentials, secret::SecretStorageError};
+
+    use windows::Win32::Security::Credentials::*;
+
+    pub struct PlatformSecretStorage;
+
+    impl PlatformSecretStorage {
+        pub async fn new() -> Self {
+            Self
+        }
+
+        pub async fn read_credentials(&self, uuid: Uuid) -> Result<Option<AccountCredentials>, SecretStorageError> {
+            let target_name = format!("PandoraLauncher_MinecraftAccount_{}", uuid.as_hyphenated());
+            let mut target_name: Vec<u16> = target_name.encode_utf16().chain(Some(0)).collect();
+
+            unsafe {
+                let mut credentials: *mut CREDENTIALW = std::ptr::null_mut();
+
+                CredReadW(
+                    windows::core::PWSTR::from_raw(target_name.as_mut_ptr()),
+                    CRED_TYPE_GENERIC,
+                    None,
+                    &mut credentials,
+                )?;
+
+                let Some(credentials) = credentials.as_mut() else {
+                    return Ok(None);
+                };
+
+                let raw = std::slice::from_raw_parts(credentials.CredentialBlob, credentials.CredentialBlobSize as usize);
+                Ok(Some(serde_json::from_slice(&raw).map_err(|_| SecretStorageError::SerializationError)?))
+            }
+        }
+
+        pub async fn write_credentials(
+            &self,
+            uuid: Uuid,
+            credentials: &AccountCredentials,
+        ) -> Result<(), SecretStorageError> {
+            let mut bytes = serde_json::to_vec(credentials).map_err(|_| SecretStorageError::SerializationError)?;
+
+            let target_name = format!("PandoraLauncher_MinecraftAccount_{}", uuid.as_hyphenated());
+            let mut target_name: Vec<u16> = target_name.encode_utf16().chain(Some(0)).collect();
+
+            let credentials = CREDENTIALW {
+                Flags: CRED_FLAGS(0),
+                Type: CRED_TYPE_GENERIC,
+                TargetName: windows::core::PWSTR::from_raw(target_name.as_mut_ptr()),
+                CredentialBlobSize: bytes.len() as u32,
+                CredentialBlob: bytes.as_mut_ptr(),
+                Persist: CRED_PERSIST_LOCAL_MACHINE,
+                ..CREDENTIALW::default()
+            };
+
+            unsafe { CredWriteW(&credentials, 0)? };
+            Ok(())
+        }
+
+        pub async fn delete_credentials(&self, uuid: Uuid) -> Result<(), SecretStorageError> {
+            let target_name = format!("PandoraLauncher_MinecraftAccount_{}", uuid.as_hyphenated());
+            let mut target_name: Vec<u16> = target_name.encode_utf16().chain(Some(0)).collect();
+
+            unsafe {
+                CredDeleteW(
+                    windows::core::PWSTR::from_raw(target_name.as_mut_ptr()),
+                    CRED_TYPE_GENERIC,
+                    None,
+                )?;
+            }
+
             Ok(())
         }
     }

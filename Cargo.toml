@@ -36,10 +36,10 @@ cesu8 = "1.1.0"
 chrono = { version = "0.4.42", features = ["serde"] }
 directories = "6.0.0"
 flate2 = "1.1.5"
-ftree = { path = "../ftree"}
+ftree = { path = "crates/ftree"}
 futures = "0.3.31"
 gpui = "0.2.2"
-gpui-component = { path = "../gpui-component/crates/ui" }
+gpui-component = { git = "https://github.com/Moulberry/gpui-component.git", rev = "6525ac151af1bdd3f294f89b0ec2c259abbe73c4" }
 hex = { version = "0.4.3", features = ["serde"] }
 image = "0.25.8"
 indexmap = { version = "2.12.0", features = ["serde"] }
@@ -57,7 +57,6 @@ rand = "0.8.5"
 regex = "1.12.2"
 reqwest = { version = "0.12.24", features = ["json", "rustls-tls", "stream"] }
 rust-embed = "8.7.2"
-rust-lzma = "0.5"
 rustc-hash = "2.1.1"
 sanitize-filename = "0.6.0"
 serde = { version = "1.0.228", features = ["rc", "alloc", "derive"] }
@@ -82,7 +81,6 @@ obfstr = "0.4.4"
 uuid = "1.18.1"
 keyring = { version = "3.6.3", features = ["apple-native", "windows-native", "linux-native-sync-persistent"] }
 tiny_http = "0.12.0"
-oo7 = { version = "0.5.0", default-features = false, features = ["native_crypto", "async-std"] }
 xmlparser = "0.13.6"
 heapless = "0.9.1"
 intrusive-collections = "0.9.7"
@@ -91,3 +89,4 @@ enumset = "1.1.10"
 serde_with = "3.15.1"
 typed-path = "0.12.0"
 parking_lot = { version = "0.12.5", features = ["deadlock_detection"] }
+lzma-rs = "0.3.0"

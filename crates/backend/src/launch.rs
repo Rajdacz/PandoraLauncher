@@ -13,7 +13,6 @@ use bridge::{
     handle::FrontendHandle, instance::LoaderSpecificModSummary, message::{MessageToFrontend, QuickPlayLaunch}, modal_action::{ModalAction, ProgressTracker, ProgressTrackerFinishType, ProgressTrackers}
 };
 use futures::{FutureExt, TryFutureExt};
-use lzma::LzmaError;
 use regex::Regex;
 use schema::{
     assets_index::AssetsIndex,
@@ -714,7 +713,7 @@ pub enum LoadJavaRuntimeError {
     #[error("Downloaded file had wrong raw size")]
     WrongRawSize,
     #[error("Failed to decompress file")]
-    Lzma(#[from] LzmaError),
+    Lzma(#[from] lzma_rs::error::Error),
     #[error("Downloaded file had the wrong hash")]
     WrongHash,
     #[error("Unable to find binary")]
@@ -801,7 +800,9 @@ async fn do_java_runtime_load(
 
                     let decompressed_or_raw = if lzma {
                         let result = tokio::task::spawn_blocking(move || {
-                            lzma::decompress(&bytes)
+                            let mut output = Vec::new();
+                            lzma_rs::lzma_decompress(&mut std::io::Cursor::new(bytes), &mut output)?;
+                            Ok(output)
                         }).await.unwrap();
 
                         match result {
@@ -847,7 +848,8 @@ async fn do_java_runtime_load(
 
                     tokio::fs::write(&path, bytes).await?;
 
-                    if cfg!(unix) && *executable {
+                    #[cfg(unix)]
+                    if *executable {
                         use std::os::unix::fs::PermissionsExt;
                         let _ = tokio::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).await;
                     }
@@ -868,13 +870,19 @@ async fn do_java_runtime_load(
 
     futures::future::try_join_all(tasks).await?;
 
-    if cfg!(unix) {
-        for (path, target) in links {
-            if let Some(parent) = path.parent()
-                && let Ok(absolute_target) = parent.join(target).canonicalize()
-                && absolute_target.starts_with(&runtime_component_dir)
-            {
-                let _ = std::os::unix::fs::symlink(absolute_target, path);
+    for (path, target) in links {
+        if let Some(parent) = path.parent()
+            && let Ok(absolute_target) = parent.join(target).canonicalize()
+            && absolute_target.starts_with(&runtime_component_dir)
+        {
+            #[cfg(unix)]
+            let _ = std::os::unix::fs::symlink(absolute_target, path);
+
+            #[cfg(windows)]
+            if absolute_target.is_dir() {
+                let _ = std::os::windows::fs::symlink_dir(absolute_target, path);
+            } else {
+                let _ = std::os::windows::fs::symlink_file(absolute_target, path);
             }
         }
     }
