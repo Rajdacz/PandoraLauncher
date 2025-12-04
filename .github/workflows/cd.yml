@@ -8,6 +8,7 @@ on:
 jobs:
   release:
     strategy:
+      fail-fast: false
       # fail-fast: true
       matrix:
         platform:
@@ -41,10 +42,10 @@ jobs:
         run: cargo build --release --target ${{ matrix.platform.target }}
 
       - name: Strip debug information
-        run: strip target/${{ matrix.platform.target }}/release/pandora-launcher${{ matrix.platform.binext }}
+        run: strip target/${{ matrix.platform.target }}/release/pandora_launcher${{ matrix.platform.binext }}
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
           name: PandoraLauncher-${{ matrix.platform.os_name }}${{ matrix.platform.binext }}
-          path: target/${{ matrix.platform.target }}/release/pandora-launcher${{ matrix.platform.binext }}
+          path: target/${{ matrix.platform.target }}/release/pandora_launcher${{ matrix.platform.binext }}
