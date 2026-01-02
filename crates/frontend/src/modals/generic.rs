@@ -3,7 +3,7 @@ use std::sync::Arc;
 use bridge::modal_action::{ModalAction, ProgressTrackerFinishType};
 use gpui::{prelude::*, *};
 use gpui_component::{
-    button::{Button, ButtonVariants}, dialog::DialogButtonProps, notification::Notification, v_flex, WindowExt
+    button::{Button, ButtonVariants}, dialog::DialogButtonProps, notification::Notification, v_flex, IconName, WindowExt
 };
 
 use crate::component::{
@@ -168,7 +168,7 @@ pub fn show_modal(
         if let Some(visit_url) = &*modal_action.visit_url.read().unwrap() {
             let message = SharedString::new(Arc::clone(&visit_url.message));
             let url = Arc::clone(&visit_url.url);
-            progress_entries.push(div().p_3().child(Button::new("visit").success().label(message).on_click(
+            progress_entries.push(div().p_3().child(Button::new("visit").info().icon(IconName::Globe).label(message).on_click(
                 move |_, _, cx| {
                     cx.open_url(&url);
                 },
