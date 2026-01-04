@@ -426,6 +426,7 @@ impl BackendState {
                             debug_assert!(path.is_absolute());
                             ContentInstall {
                                 target: InstallTarget::Instance(id),
+                                loader_hint: schema::loader::Loader::Unknown,
                                 files: [ContentInstallFile {
                                     replace_old: Some(mod_summary.path.clone()),
                                     path: bridge::install::ContentInstallPath::Raw(path.into()),

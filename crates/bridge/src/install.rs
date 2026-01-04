@@ -9,7 +9,6 @@ pub enum InstallTarget {
     Instance(InstanceID),
     Library,
     NewInstance {
-        loader: Loader,
         name: Arc<str>,
         minecraft_version: Option<Arc<str>>,
     },
@@ -18,6 +17,7 @@ pub enum InstallTarget {
 #[derive(Debug, Clone)]
 pub struct ContentInstall {
     pub target: InstallTarget,
+    pub loader_hint: Loader,
     pub files: Arc<[ContentInstallFile]>,
 }
 

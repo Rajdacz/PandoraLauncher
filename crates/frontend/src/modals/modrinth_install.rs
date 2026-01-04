@@ -348,7 +348,6 @@ impl InstallDialog {
                 .child(Button::new("create").success().label(create_instance_label).on_click(cx.listener(
                     |this, _, _, _| {
                         this.target = Some(InstallTarget::NewInstance {
-                            loader: Loader::Vanilla,
                             name: "New Instance".into(),
                             minecraft_version: None,
                         });
@@ -619,16 +618,19 @@ impl InstallDialog {
 
                             let mut target = this.target.clone().unwrap();
 
-                            if let InstallTarget::NewInstance { loader, name, minecraft_version } = &mut target {
-                                if let Some(selected_loader) = &selected_loader {
-                                    let modrinth_loader = ModrinthLoader::from_name(selected_loader);
-                                    match modrinth_loader {
-                                        ModrinthLoader::Fabric => *loader = Loader::Fabric,
-                                        ModrinthLoader::Forge => *loader = Loader::Forge,
-                                        ModrinthLoader::NeoForge => *loader = Loader::NeoForge,
-                                        _ => {}
-                                    }
+                            let mut loader_hint = Loader::Unknown;
+                            if let Some(selected_loader) = &selected_loader {
+                                let modrinth_loader = ModrinthLoader::from_name(selected_loader);
+                                match modrinth_loader {
+                                    ModrinthLoader::Fabric => loader_hint = Loader::Fabric,
+                                    ModrinthLoader::Forge => loader_hint = Loader::Forge,
+                                    ModrinthLoader::NeoForge => loader_hint = Loader::NeoForge,
+                                    _ => {}
                                 }
+                            }
+
+                            if let InstallTarget::NewInstance { name, minecraft_version } = &mut target {
+
                                 if let Some(selected_minecraft_version) = &selected_minecraft_version {
                                     *minecraft_version = Some(selected_minecraft_version.as_str().into());
                                 }
@@ -637,6 +639,7 @@ impl InstallDialog {
 
                             let content_install = ContentInstall {
                                 target,
+                                loader_hint,
                                 files: [ContentInstallFile {
                                     replace_old: None,
                                     path: bridge::install::ContentInstallPath::Safe(path),

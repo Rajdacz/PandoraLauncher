@@ -644,6 +644,7 @@ impl BackendState {
 
                 let content_install = ContentInstall {
                     target: bridge::install::InstallTarget::Library,
+                    loader_hint: Loader::Unknown,
                     files: filtered_downloads.clone().filter_map(|file| {
                         let path = SafePath::new(&file.path)?;
                         Some(ContentInstallFile {
@@ -878,6 +879,10 @@ impl BackendState {
     }
 
     pub async fn create_instance(&self, name: &str, version: &str, loader: Loader) -> Option<PathBuf> {
+        if loader == Loader::Unknown {
+            self.send.send_warning(format!("Unable to create instance, unknown loader"));
+            return None;
+        }
         if !crate::is_single_component_path(&name) {
             self.send.send_warning(format!("Unable to create instance, name must not be a path: {}", name));
             return None;

@@ -138,6 +138,7 @@ impl Render for InstanceModsSubpage {
                                 Ok(Some(paths)) => {
                                     let content_install = ContentInstall {
                                         target: InstallTarget::Instance(instance),
+                                        loader_hint: schema::loader::Loader::Unknown,
                                         files: paths.into_iter().filter_map(|path| {
                                             Some(ContentInstallFile {
                                                 replace_old: None,

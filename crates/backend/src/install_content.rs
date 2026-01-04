@@ -4,7 +4,7 @@ use bridge::{
     install::{ContentDownload, ContentInstall, ContentInstallFile, ContentInstallPath}, instance::{LoaderSpecificModSummary, ModSummary}, message::MessageToFrontend, modal_action::{ModalAction, ProgressTracker, ProgressTrackerFinishType}, safe_path::SafePath
 };
 use reqwest::StatusCode;
-use schema::content::ContentSource;
+use schema::{content::ContentSource, loader::Loader};
 use sha1::{Digest, Sha1};
 use tokio::io::AsyncWriteExt;
 
@@ -119,12 +119,18 @@ impl BackendState {
 
                 match content.target {
                     bridge::install::InstallTarget::Instance(instance_id) => {
-                        if let Some(instance) = self.instance_state.read().instances.get(instance_id) {
+                        if let Some(instance) = self.instance_state.write().instances.get_mut(instance_id) {
+                            if instance.configuration.get().loader == Loader::Vanilla && content.loader_hint != Loader::Unknown {
+                                instance.configuration.modify(|config| {
+                                    config.loader = content.loader_hint;
+                                });
+                            }
+
                             instance_dir = Some(instance.dot_minecraft_path.clone());
                         }
                     },
                     bridge::install::InstallTarget::Library => {},
-                    bridge::install::InstallTarget::NewInstance { loader, name, mut minecraft_version } => {
+                    bridge::install::InstallTarget::NewInstance { name, mut minecraft_version } => {
                         if minecraft_version.is_none() {
                             if let Ok(meta) = self.meta.fetch(&MinecraftVersionManifestMetadataItem).await {
                                 minecraft_version = Some(meta.latest.release.into());
@@ -132,7 +138,7 @@ impl BackendState {
                         }
 
                         if let Some(minecraft_version) = minecraft_version {
-                            instance_dir = self.create_instance_sanitized(&name, &minecraft_version, loader).await
+                            instance_dir = self.create_instance_sanitized(&name, &minecraft_version, content.loader_hint).await
                                 .map(|v| v.join(".minecraft").into());
                         }
                     },
