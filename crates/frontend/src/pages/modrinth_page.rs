@@ -189,7 +189,13 @@ impl ModrinthSearchPage {
             self._delayed_clear_task = Task::ready(());
         }
 
-        self.hits.extend(search_result.hits.iter().cloned());
+        self.hits.extend(search_result.hits.iter().map(|hit| {
+            let mut hit = hit.clone();
+            if let Some(description) = hit.description {
+                hit.description = Some(description.replace("\n", " ").into());
+            }
+            hit
+        }));
         self.total_hits = search_result.total_hits;
     }
 
