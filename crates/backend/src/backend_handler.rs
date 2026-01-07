@@ -1,16 +1,16 @@
-use std::{ffi::OsString, io::{BufRead, Read, Seek, SeekFrom, Write}, path::Path, sync::{atomic::Ordering, Arc}, time::{Duration, SystemTime}};
+use std::{io::{BufRead, Read, Seek, SeekFrom, Write}, path::Path, sync::{atomic::Ordering, Arc}, time::{Duration, SystemTime}};
 
 use auth::{credentials::AccountCredentials, models::{MinecraftAccessToken, MinecraftProfileResponse}, secret::PlatformSecretStorage};
 use bridge::{
-    install::{ContentDownload, ContentInstall, ContentInstallFile, InstallTarget}, instance::{ContentUpdateStatus, InstanceStatus, LoaderSpecificModSummary, ModSummary}, message::{LogFiles, MessageToBackend, MessageToFrontend, SyncState}, meta::MetadataResult, modal_action::{ModalAction, ModalActionVisitUrl, ProgressTracker, ProgressTrackerFinishType}, serial::AtomicOptionSerial
+    install::{ContentDownload, ContentInstall, ContentInstallFile, InstallTarget}, instance::{InstanceStatus, LoaderSpecificModSummary, ModSummary}, message::{LogFiles, MessageToBackend, MessageToFrontend}, meta::MetadataResult, modal_action::{ModalAction, ModalActionVisitUrl, ProgressTracker, ProgressTrackerFinishType}, serial::AtomicOptionSerial
 };
-use futures::{FutureExt, TryFutureExt};
-use schema::{content::ContentSource, modrinth::{ModrinthFile, ModrinthLoader}, version::{LaunchArgument, LaunchArgumentValue}};
+use futures::TryFutureExt;
+use schema::{content::ContentSource, modrinth::ModrinthLoader, version::{LaunchArgument, LaunchArgumentValue}};
 use serde::Deserialize;
 use tokio::{io::AsyncBufReadExt, sync::Semaphore};
 
 use crate::{
-    account::{BackendAccount, MinecraftLoginInfo}, arcfactory::ArcStrFactory, launch::{ArgumentExpansionKey, LaunchError}, log_reader, metadata::{items::{AssetsIndexMetadataItem, MinecraftVersionManifestMetadataItem, MinecraftVersionMetadataItem, ModrinthProjectVersionsMetadataItem, ModrinthSearchMetadataItem, ModrinthV3VersionUpdateMetadataItem, ModrinthVersionUpdateMetadataItem, MojangJavaRuntimeComponentMetadataItem, MojangJavaRuntimesMetadataItem, VersionUpdateParameters, VersionV3LoaderFields, VersionV3UpdateParameters}, manager::MetaLoadError}, mod_metadata::ModUpdateAction, BackendState, LoginError, WatchTarget
+    account::{BackendAccount, MinecraftLoginInfo}, arcfactory::ArcStrFactory, launch::{ArgumentExpansionKey, LaunchError}, log_reader, metadata::{items::{AssetsIndexMetadataItem, MinecraftVersionManifestMetadataItem, MinecraftVersionMetadataItem, ModrinthProjectVersionsMetadataItem, ModrinthSearchMetadataItem, ModrinthV3VersionUpdateMetadataItem, ModrinthVersionUpdateMetadataItem, MojangJavaRuntimeComponentMetadataItem, MojangJavaRuntimesMetadataItem, VersionUpdateParameters, VersionV3LoaderFields, VersionV3UpdateParameters}, manager::MetaLoadError}, mod_metadata::ModUpdateAction, BackendState, LoginError
 };
 
 impl BackendState {

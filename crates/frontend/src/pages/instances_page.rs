@@ -6,7 +6,7 @@ use std::sync::{
 use bridge::{handle::BackendHandle, message::MessageToBackend};
 use gpui::{prelude::*, *};
 use gpui_component::{
-    ActiveTheme as _, IconName, IndexPath, Selectable, StyledExt, WindowExt,
+    ActiveTheme as _, IconName, IndexPath, Selectable, WindowExt,
     alert::Alert,
     button::{Button, ButtonGroup, ButtonVariants},
     checkbox::Checkbox,

@@ -1,4 +1,3 @@
-use std::error::Error;
 use std::sync::{LazyLock, OnceLock};
 use std::{borrow::Cow, mem, pin::Pin, task::Poll, time::Duration};
 

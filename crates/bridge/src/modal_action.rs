@@ -2,7 +2,7 @@ use std::{
     ops::Deref,
     sync::{
         Arc, RwLock,
-        atomic::{AtomicBool, AtomicUsize, Ordering},
+        atomic::{AtomicUsize, Ordering},
     },
     time::Instant,
 };

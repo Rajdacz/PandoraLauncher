@@ -10,7 +10,7 @@ use std::{
 };
 
 use bridge::{
-    handle::FrontendHandle, instance::LoaderSpecificModSummary, message::{MessageToFrontend, QuickPlayLaunch}, modal_action::{ModalAction, ProgressTracker, ProgressTrackerFinishType, ProgressTrackers}, safe_path::SafePath
+    handle::FrontendHandle, message::{MessageToFrontend, QuickPlayLaunch}, modal_action::{ModalAction, ProgressTracker, ProgressTrackerFinishType, ProgressTrackers}, safe_path::SafePath
 };
 use futures::{FutureExt, TryFutureExt};
 use rc_zip_sync::ReadZip;
@@ -25,7 +25,7 @@ use sha1::{Digest, Sha1};
 use ustr::Ustr;
 
 use crate::{
-    account::MinecraftLoginInfo, directories::LauncherDirectories, install_content, launch_wrapper, metadata::{items::{AssetsIndexMetadataItem, FabricLaunchMetadataItem, FabricLoaderManifestMetadataItem, MinecraftVersionManifestMetadataItem, MinecraftVersionMetadataItem, MojangJavaRuntimeComponentMetadataItem, MojangJavaRuntimesMetadataItem}, manager::{
+    account::MinecraftLoginInfo, directories::LauncherDirectories, launch_wrapper, metadata::{items::{AssetsIndexMetadataItem, FabricLaunchMetadataItem, FabricLoaderManifestMetadataItem, MinecraftVersionManifestMetadataItem, MinecraftVersionMetadataItem, MojangJavaRuntimeComponentMetadataItem, MojangJavaRuntimesMetadataItem}, manager::{
         MetaLoadError, MetadataManager,
     }}
 };

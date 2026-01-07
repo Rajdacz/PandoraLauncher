@@ -1,21 +1,11 @@
-use std::sync::{
-    Arc, Mutex, RwLock,
-    atomic::{AtomicBool, AtomicUsize, Ordering},
-};
-
 use bridge::{handle::BackendHandle, message::{MessageToBackend, SyncState, SyncTarget}};
 use enumset::EnumSet;
 use gpui::{prelude::*, *};
 use gpui_component::{
-    alert::Alert, button::{Button, ButtonGroup, ButtonVariants}, checkbox::Checkbox, h_flex, input::{Input, InputEvent, InputState}, scroll::{ScrollableElement, ScrollbarAxis}, select::{Select, SelectDelegate, SelectItem, SelectState}, skeleton::Skeleton, spinner::Spinner, table::{Table, TableState}, tooltip::Tooltip, v_flex, ActiveTheme as _, Disableable, Icon, IconName, IndexPath, Selectable, Sizable, StyledExt, WindowExt
+    button::{Button, ButtonVariants}, checkbox::Checkbox, h_flex, scroll::ScrollableElement, spinner::Spinner, tooltip::Tooltip, v_flex, ActiveTheme as _, Disableable, Icon, IconName, Sizable
 };
-use schema::{loader::Loader, version_manifest::{MinecraftVersionManifest, MinecraftVersionType}};
 
-use crate::{
-    component::instance_list::InstanceList,
-    entity::{instance::InstanceEntries, metadata::{AsMetadataResult, FrontendMetadata, FrontendMetadataResult}, DataEntities},
-    ui,
-};
+use crate::{entity::DataEntities, ui};
 
 pub struct SyncingPage {
     backend_handle: BackendHandle,
@@ -26,7 +16,7 @@ pub struct SyncingPage {
 }
 
 impl SyncingPage {
-    pub fn new(data: &DataEntities, window: &mut Window, cx: &mut Context<Self>) -> Self {
+    pub fn new(data: &DataEntities, _window: &mut Window, cx: &mut Context<Self>) -> Self {
         let mut page = Self {
             backend_handle: data.backend_handle.clone(),
             sync_state: SyncState::default(),

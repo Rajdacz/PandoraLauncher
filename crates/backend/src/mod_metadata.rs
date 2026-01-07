@@ -1,5 +1,5 @@
 use std::{
-    collections::HashMap, fs::File, io::{Cursor, Write}, path::{Path, PathBuf}, sync::Arc
+    collections::HashMap, io::{Cursor, Write}, path::{Path, PathBuf}, sync::Arc
 };
 
 use bridge::{instance::{AtomicContentUpdateStatus, ContentUpdateStatus, LoaderSpecificModSummary, ModSummary}, safe_path::SafePath};

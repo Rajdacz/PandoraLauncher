@@ -1,7 +1,6 @@
-use std::{error::Error, io::Cursor, time::Duration};
+use std::error::Error;
 
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use tokio_util::sync::CancellationToken;
 use url::Url;
 
 use crate::{
@@ -33,10 +32,10 @@ pub async fn start_server(
     let listener = tokio::net::TcpListener::bind(constants::SERVER_ADDRESS).await?;
 
     let mut buf = [0_u8; 1024];
-    let mut read = 0;
+    let mut read;
 
     loop {
-        let (mut stream, addr) = listener.accept().await?;
+        let (mut stream, _addr) = listener.accept().await?;
 
         read = 0;
         loop {
@@ -135,19 +134,6 @@ pub async fn start_server(
             });
         }
     }
-
-    // let server = Server::http(constants::SERVER_ADDRESS).map_err(ProcessAuthorizationError::StartServer)?;
-
-    // loop {
-    //     let request = server.recv_timeout(Duration::from_millis(50))?;
-    //     if cancel.is_cancelled() {
-    //         break Err(ProcessAuthorizationError::CancelledByUser);
-    //     }
-    //     let Some(request) = request else {
-    //         continue;
-    //     };
-
-    // }
 }
 
 fn create_response(main: &str, secondary: &str, error: bool) -> String {

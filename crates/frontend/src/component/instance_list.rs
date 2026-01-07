@@ -10,7 +10,7 @@ use gpui_component::{
 use crate::{
     entity::{
         instance::{InstanceAddedEvent, InstanceEntry, InstanceModifiedEvent, InstanceRemovedEvent}, DataEntities
-    }, pages::instance::instance_page::InstanceSubpageType, root::{self, LauncherRootGlobal}, ui
+    }, pages::instance::instance_page::InstanceSubpageType, root, ui
 };
 
 pub struct InstanceList {

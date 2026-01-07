@@ -1,5 +1,5 @@
 use std::{
-    collections::{HashMap, HashSet}, io::Cursor, path::{Path, PathBuf}, sync::Arc, thread, time::{Duration, SystemTime}
+    collections::{HashMap, HashSet}, io::Cursor, path::{Path, PathBuf}, sync::Arc, time::{Duration, SystemTime}
 };
 
 use auth::{
@@ -10,10 +10,8 @@ use auth::{
     serve_redirect::{self, ProcessAuthorizationError},
 };
 use bridge::{
-    handle::{BackendHandle, BackendReceiver, FrontendHandle}, install::{ContentDownload, ContentInstall, ContentInstallFile, ContentInstallPath}, instance::{InstanceID, InstanceModSummary, InstanceServerSummary, InstanceWorldSummary, LoaderSpecificModSummary}, message::{MessageToBackend, MessageToFrontend, SyncTarget}, modal_action::{ModalAction, ModalActionVisitUrl, ProgressTracker, ProgressTrackerFinishType}, safe_path::SafePath
+    handle::{BackendHandle, BackendReceiver, FrontendHandle}, install::{ContentDownload, ContentInstall, ContentInstallFile, ContentInstallPath}, instance::{InstanceID, InstanceModSummary, InstanceServerSummary, InstanceWorldSummary, LoaderSpecificModSummary}, message::MessageToFrontend, modal_action::{ModalAction, ModalActionVisitUrl, ProgressTracker, ProgressTrackerFinishType}, safe_path::SafePath
 };
-use enumset::EnumSet;
-use image::imageops::FilterType;
 use parking_lot::RwLock;
 use reqwest::{StatusCode, redirect::Policy};
 use rustc_hash::FxHashMap;
@@ -165,7 +163,7 @@ pub enum HeadCacheEntry {
 }
 
 impl BackendState {
-    async fn start(mut self, recv: BackendReceiver, watcher_rx: Receiver<notify_debouncer_full::DebounceEventResult>) {
+    async fn start(self, recv: BackendReceiver, watcher_rx: Receiver<notify_debouncer_full::DebounceEventResult>) {
         // Pre-fetch version manifest
         self.meta.load(&MinecraftVersionManifestMetadataItem).await;
 

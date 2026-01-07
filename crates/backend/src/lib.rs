@@ -1,11 +1,11 @@
 #![deny(unused_must_use)]
 
 mod backend;
-use std::{ffi::OsString, io::{Read, Seek, SeekFrom, Write}, path::{Path, PathBuf}};
+use std::{ffi::OsString, io::Write, path::{Path, PathBuf}};
 
 pub use backend::*;
 use rand::RngCore;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use sha1::{Digest, Sha1};
 
 mod backend_filesystem;

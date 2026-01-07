@@ -8,7 +8,7 @@ use bridge::{
     modal_action::ModalAction,
 };
 use gpui::{prelude::*, *};
-use gpui_component::{breadcrumb::Breadcrumb, scroll::{ScrollableElement, ScrollbarAxis}, v_flex, Root, StyledExt};
+use gpui_component::{breadcrumb::Breadcrumb, scroll::ScrollableElement, v_flex, Root};
 
 use crate::{MAIN_FONT, entity::DataEntities, modals, ui::{LauncherUI, PageType}};
 

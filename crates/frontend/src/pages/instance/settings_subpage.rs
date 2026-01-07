@@ -1,18 +1,13 @@
-use std::{path::{Path, PathBuf}, rc::Rc, sync::{
-    atomic::{AtomicBool, AtomicUsize, Ordering}, Arc, Mutex
-}};
-
 use bridge::{
-    handle::BackendHandle, instance::{InstanceID, InstanceModSummary}, message::{LogFiles, MessageToBackend}
+    handle::BackendHandle, instance::InstanceID, message::MessageToBackend
 };
 use gpui::{prelude::*, *};
 use gpui_component::{
-    button::{Button, ButtonVariants}, checkbox::Checkbox, h_flex, input::{Input, InputEvent, InputState, NumberInput, NumberInputEvent}, list::{ListDelegate, ListItem, ListState}, select::{Select, SelectEvent, SelectState}, spinner::Spinner, switch::Switch, v_flex, ActiveTheme as _, Disableable, Icon, IconName, IndexPath, Sizable
+    button::{Button, ButtonVariants}, checkbox::Checkbox, h_flex, input::{Input, InputEvent, InputState, NumberInput, NumberInputEvent}, v_flex, ActiveTheme as _, Disableable, Sizable
 };
-use rustc_hash::FxHashSet;
 use schema::instance::{InstanceJvmFlagsConfiguration, InstanceMemoryConfiguration};
 
-use crate::{component::{error_alert::ErrorAlert, named_dropdown::{NamedDropdown, NamedDropdownItem}, readonly_text_field::{ReadonlyTextField, ReadonlyTextFieldWithControls}}, entity::instance::InstanceEntry, png_render_cache, root};
+use crate::entity::instance::InstanceEntry;
 
 #[derive(PartialEq, Eq)]
 enum NewNameChangeState {

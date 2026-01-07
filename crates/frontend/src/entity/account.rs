@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use bridge::account::Account;
-use gpui::{App, AppContext, Entity};
+use gpui::{App, Entity};
 use uuid::Uuid;
 
 #[derive(Default)]

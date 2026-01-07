@@ -1,21 +1,19 @@
 use std::{
     collections::HashSet, ffi::OsStr, hash::{DefaultHasher, Hash, Hasher}, io::Read, path::Path, process::Child, sync::{
-        atomic::{AtomicBool, Ordering}, Arc
-    }, time::Duration
+        atomic::Ordering, Arc
+    }
 };
 
 use anyhow::Context;
 use base64::Engine;
 use bridge::{
-    handle::{BackendHandle, FrontendHandle}, instance::{
-        InstanceID, InstanceModID, InstanceModSummary, InstanceServerSummary, InstanceStatus, InstanceWorldSummary, ModSummary,
-    }, keep_alive::{KeepAlive, KeepAliveHandle}, message::{AtomicBridgeDataLoadState, BridgeDataLoadState, MessageToFrontend}, notify_signal::{KeepAliveNotifySignal, KeepAliveNotifySignalHandle, NotifySignal}, serial::Serial
+    instance::{
+        InstanceID, InstanceModID, InstanceModSummary, InstanceServerSummary, InstanceStatus, InstanceWorldSummary,
+    }, message::{AtomicBridgeDataLoadState, BridgeDataLoadState, MessageToFrontend}, notify_signal::{KeepAliveNotifySignal, KeepAliveNotifySignalHandle}
 };
-use parking_lot::{RwLock, RwLockWriteGuard};
-use schema::{instance::InstanceConfiguration, loader::Loader};
-use serde::{Deserialize, Serialize};
+use parking_lot::RwLock;
+use schema::instance::InstanceConfiguration;
 use thiserror::Error;
-use tokio::task::JoinHandle;
 
 use ustr::Ustr;
 

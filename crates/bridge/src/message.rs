@@ -1,4 +1,4 @@
-use std::{ffi::OsString, path::{Path, PathBuf}, sync::Arc};
+use std::{ffi::OsString, path::Path, sync::Arc};
 
 use enumset::{EnumSet, EnumSetType};
 use schema::{instance::{InstanceConfiguration, InstanceJvmFlagsConfiguration, InstanceMemoryConfiguration}, loader::Loader};
@@ -8,7 +8,7 @@ use uuid::Uuid;
 use crate::{
     account::Account, game_output::GameOutputLogLevel, install::ContentInstall, instance::{
         InstanceID, InstanceModID, InstanceModSummary, InstanceServerSummary, InstanceStatus, InstanceWorldSummary,
-    }, keep_alive::{KeepAlive, KeepAliveHandle}, meta::{MetadataRequest, MetadataResult}, modal_action::ModalAction, serial::Serial
+    }, keep_alive::{KeepAlive, KeepAliveHandle}, meta::{MetadataRequest, MetadataResult}, modal_action::ModalAction
 };
 
 #[derive(Debug)]

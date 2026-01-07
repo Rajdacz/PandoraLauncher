@@ -3,7 +3,7 @@ use std::sync::{atomic::{AtomicBool, AtomicU8, Ordering}, Arc};
 use bridge::{handle::BackendHandle, instance::InstanceID};
 use gpui::{prelude::*, *};
 use gpui_component::{
-    button::{Button, ButtonVariants}, dialog::DialogButtonProps, input::{Input, InputEvent, InputState}, notification::Notification, v_flex, Disableable, WindowExt
+    button::{Button, ButtonVariants}, input::{Input, InputEvent, InputState}, v_flex, Disableable, WindowExt
 };
 
 pub fn open_delete_instance(

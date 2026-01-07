@@ -1,26 +1,22 @@
 #![deny(unused_must_use)]
 
 use std::{
-    collections::HashMap, io::Write, path::{Path, PathBuf}, sync::{Arc, RwLock}
+    path::{Path, PathBuf}, sync::{Arc, RwLock}
 };
 
-use bridge::{
-    handle::{BackendHandle, FrontendHandle, FrontendReceiver},
-    message::{BridgeNotificationType, MessageToFrontend},
-};
+use bridge::
+    handle::{BackendHandle, FrontendReceiver}
+;
 use gpui::*;
 use gpui_component::{
     notification::{Notification, NotificationType}, Root, StyledExt, WindowExt
 };
 use indexmap::IndexMap;
-use rand::RngCore;
-use serde::Deserialize;
-use tokio::sync::mpsc::Receiver;
 
 use crate::{
     entity::{
         account::AccountEntries, instance::InstanceEntries, metadata::FrontendMetadata, DataEntities
-    }, game_output::{GameOutput, GameOutputRoot}, interface_config::InterfaceConfig, processor::Processor, root::{LauncherRoot, LauncherRootGlobal}
+    }, interface_config::InterfaceConfig, processor::Processor, root::{LauncherRoot, LauncherRootGlobal}
 };
 
 pub mod component;

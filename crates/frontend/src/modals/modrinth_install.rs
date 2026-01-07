@@ -1,4 +1,4 @@
-use std::{cmp::Ordering, path::Path, sync::Arc};
+use std::{cmp::Ordering, sync::Arc};
 
 use bridge::{install::{ContentDownload, ContentInstall, ContentInstallFile, InstallTarget}, instance::InstanceID, meta::MetadataRequest, safe_path::SafePath};
 use enumset::EnumSet;

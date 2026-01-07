@@ -1,17 +1,14 @@
-use std::{path::{Path, PathBuf}, sync::{
-    atomic::{AtomicUsize, Ordering}, Arc, Mutex
-}};
+use std::{path::Path, sync::Arc};
 
 use bridge::{
-    handle::BackendHandle, instance::{InstanceID, InstanceModSummary}, message::{LogFiles, MessageToBackend}
+    handle::BackendHandle, instance::InstanceID, message::{LogFiles, MessageToBackend}
 };
 use gpui::{prelude::*, *};
 use gpui_component::{
-    button::{Button, ButtonVariants}, h_flex, list::{ListDelegate, ListItem, ListState}, select::{Select, SelectEvent, SelectState}, spinner::Spinner, switch::Switch, v_flex, ActiveTheme as _, Icon, IconName, IndexPath, Sizable
+    button::{Button, ButtonVariants}, h_flex, select::{Select, SelectEvent, SelectState}, spinner::Spinner, v_flex, ActiveTheme as _, Sizable
 };
-use rustc_hash::FxHashSet;
 
-use crate::{component::{named_dropdown::{NamedDropdown, NamedDropdownItem}, readonly_text_field::{ReadonlyTextField, ReadonlyTextFieldWithControls}}, entity::instance::InstanceEntry, png_render_cache, root};
+use crate::{component::{named_dropdown::{NamedDropdown, NamedDropdownItem}, readonly_text_field::{ReadonlyTextField, ReadonlyTextFieldWithControls}}, entity::instance::InstanceEntry, root};
 
 pub struct InstanceLogsSubpage {
     instance: InstanceID,

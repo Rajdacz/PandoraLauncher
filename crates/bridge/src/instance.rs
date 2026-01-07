@@ -1,7 +1,6 @@
-use std::{collections::{HashMap, HashSet}, path::Path, sync::{atomic::AtomicBool, Arc}};
+use std::{collections::HashSet, path::Path, sync::Arc};
 
-use schema::{loader::Loader, modification::ModrinthModpackFileDownload};
-use ustr::Ustr;
+use schema::modification::ModrinthModpackFileDownload;
 
 use crate::safe_path::SafePath;
 

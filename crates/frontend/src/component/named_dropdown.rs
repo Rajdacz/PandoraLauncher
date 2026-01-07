@@ -64,7 +64,7 @@ impl<T: Clone> SelectDelegate for NamedDropdown<T> {
 
     fn perform_search(
         &mut self,
-        query: &str,
+        _query: &str,
         _window: &mut Window,
         _: &mut Context<SelectState<Self>>,
     ) -> Task<()> {

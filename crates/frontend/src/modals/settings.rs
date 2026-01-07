@@ -1,6 +1,6 @@
 use std::{path::Path, sync::Arc};
 
-use gpui::{*, prelude::*};
+use gpui::*;
 use gpui_component::{button::{Button, ButtonVariants}, select::{SearchableVec, Select, SelectEvent, SelectState}, sheet::Sheet, tab::{Tab, TabBar, TabVariant}, v_flex, ActiveTheme, IconName, ThemeRegistry};
 
 use crate::interface_config::InterfaceConfig;

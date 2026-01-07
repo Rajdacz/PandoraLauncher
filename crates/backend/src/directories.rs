@@ -1,7 +1,5 @@
 use std::{path::{Path, PathBuf}, sync::Arc};
 
-use crate::{account::BackendAccountInfo, config::BackendConfig};
-
 pub struct LauncherDirectories {
     pub instances_dir: Arc<Path>,
 

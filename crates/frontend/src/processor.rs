@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use bridge::message::{BridgeNotificationType, MessageToFrontend};
-use gpui::{px, size, AnyWindowHandle, App, AppContext, AsyncApp, Entity, SharedString, TitlebarOptions, WindowDecorations, WindowHandle, WindowOptions};
+use gpui::{px, size, AnyWindowHandle, App, AppContext, Entity, SharedString, TitlebarOptions, WindowDecorations, WindowHandle, WindowOptions};
 use gpui_component::{notification::{Notification, NotificationType}, Root, WindowExt};
 
 use crate::{entity::{account::AccountEntries, instance::InstanceEntries, metadata::FrontendMetadata, DataEntities}, game_output::{GameOutput, GameOutputRoot}};

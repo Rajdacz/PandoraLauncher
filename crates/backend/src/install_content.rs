@@ -1,7 +1,7 @@
-use std::{ffi::OsString, io::Write, path::{Path, PathBuf}, sync::{atomic::AtomicBool, Arc}};
+use std::{io::Write, path::{Path, PathBuf}, sync::Arc};
 
 use bridge::{
-    install::{ContentDownload, ContentInstall, ContentInstallFile, ContentInstallPath}, instance::{LoaderSpecificModSummary, ModSummary}, message::MessageToFrontend, modal_action::{ModalAction, ProgressTracker, ProgressTrackerFinishType}, safe_path::SafePath
+    install::{ContentDownload, ContentInstall, ContentInstallFile, ContentInstallPath}, instance::{LoaderSpecificModSummary, ModSummary}, modal_action::{ModalAction, ProgressTracker, ProgressTrackerFinishType}, safe_path::SafePath
 };
 use reqwest::StatusCode;
 use schema::{content::ContentSource, loader::Loader};
@@ -24,8 +24,6 @@ pub enum ContentInstallError {
     InvalidHash(Arc<str>),
     #[error("Failed to perform I/O operation:\n{0}")]
     IoError(#[from] std::io::Error),
-    #[error("Invalid filename:\n{0}")]
-    InvalidPath(Arc<Path>),
 }
 
 struct InstallFromContentLibrary {
