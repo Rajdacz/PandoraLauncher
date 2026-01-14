@@ -584,11 +584,17 @@ impl Render for ModrinthSearchPage {
                 .outline()
                 .multiple(true)
                 .children(categories.iter().map(|id| {
-                    Button::new(*id).label(if id == &"worldgen" {
-                        "Worldgen".into()
-                    } else {
-                        ts!(*id)
-                    }).selected(self.filter_categories.contains(id))
+                    Button::new(*id)
+                        .label(if id == &"worldgen" {
+                            "Worldgen".into()
+                        } else {
+                            ts!(*id)
+                        })
+                        .when_some(icon_for(id), |this, icon| {
+                            this.icon(Icon::empty().path(icon))
+                        })
+                        .selected(self.filter_categories.contains(id)
+                    )
                 }))
                 .on_click(cx.listener(|page, clicked: &Vec<usize>, window, cx| {
                     page.set_filter_categories(clicked.iter().filter_map(|index| categories.get(*index).map(|s| *s)).collect(), window, cx);
