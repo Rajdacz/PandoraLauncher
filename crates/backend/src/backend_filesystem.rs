@@ -464,7 +464,14 @@ fn get_simple_event(event: notify::Event) -> Option<FilesystemEvent> {
             },
             ModifyKind::Metadata(_) => None,
             ModifyKind::Name(rename_mode) => match rename_mode {
-                RenameMode::Any => None,
+                RenameMode::Any => {
+                    let path = event.paths[0].clone().into();
+                    if std::fs::exists(&path).unwrap_or(true) {
+                        Some(FilesystemEvent::Change(path))
+                    } else {
+                        Some(FilesystemEvent::Remove(path))
+                    }
+                },
                 RenameMode::To => Some(FilesystemEvent::Change(event.paths[0].clone().into())),
                 RenameMode::From => Some(FilesystemEvent::Remove(event.paths[0].clone().into())),
                 RenameMode::Both => {

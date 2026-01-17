@@ -1,13 +1,13 @@
-use std::{borrow::Cow, path::Path, sync::Arc};
+use std::{borrow::Cow, cmp::Ordering, path::Path, sync::Arc};
 
 use bridge::{
     handle::BackendHandle, instance::InstanceID, message::MessageToBackend
 };
 use gpui::{prelude::*, *};
 use gpui_component::{
-    button::{Button, ButtonVariants}, checkbox::Checkbox, h_flex, input::{Input, InputEvent, InputState, NumberInput, NumberInputEvent}, notification::{Notification, NotificationType}, v_flex, ActiveTheme as _, Disableable, Sizable, WindowExt
+    ActiveTheme as _, Disableable, Selectable, Sizable, WindowExt, button::{Button, ButtonGroup, ButtonVariants}, checkbox::Checkbox, h_flex, input::{Input, InputEvent, InputState, NumberInput, NumberInputEvent}, notification::{Notification, NotificationType}, v_flex
 };
-use schema::instance::{InstanceJvmBinaryConfiguration, InstanceJvmFlagsConfiguration, InstanceMemoryConfiguration};
+use schema::{instance::{InstanceJvmBinaryConfiguration, InstanceJvmFlagsConfiguration, InstanceMemoryConfiguration}, loader::Loader};
 
 use crate::{entity::instance::InstanceEntry, interface_config::InterfaceConfig};
 
@@ -21,6 +21,7 @@ enum NewNameChangeState {
 pub struct InstanceSettingsSubpage {
     instance: Entity<InstanceEntry>,
     instance_id: InstanceID,
+    loader: Loader,
     new_name_input_state: Entity<InputState>,
     memory_override_enabled: bool,
     memory_min_input_state: Entity<InputState>,
@@ -46,6 +47,7 @@ impl InstanceSettingsSubpage {
 
         let entry = instance.read(cx);
         let instance_id = entry.id;
+        let loader = entry.configuration.loader;
 
         let memory = entry.configuration.memory.unwrap_or_default();
         let jvm_flags = entry.configuration.jvm_flags.clone().unwrap_or_default();
@@ -71,6 +73,7 @@ impl InstanceSettingsSubpage {
             instance: instance.clone(),
             instance_id,
             new_name_input_state,
+            loader,
             memory_override_enabled: memory.enabled,
             memory_min_input_state,
             memory_max_input_state,
@@ -219,14 +222,14 @@ impl Render for InstanceSettingsSubpage {
             SharedString::new_static("<unset>")
         };
 
-        let content = v_flex()
-            .p_4()
+        let basic_content = v_flex()
             .gap_4()
+            .size_full()
             .child(v_flex()
                 .child("Instance name")
                 .child(h_flex()
                     .gap_2()
-                    .child(Input::new(&self.new_name_input_state).w_64())
+                    .child(Input::new(&self.new_name_input_state))
                     .when(self.new_name_change_state != NewNameChangeState::NoChange, |this| {
                         if self.new_name_change_state == NewNameChangeState::InvalidName {
                             this.child("Invalid name")
@@ -248,6 +251,52 @@ impl Render for InstanceSettingsSubpage {
                     })
                 )
             )
+            .child(ButtonGroup::new("loader")
+                .outline()
+                .child(
+                    Button::new("loader-vanilla")
+                        .label("Vanilla")
+                        .selected(self.loader == Loader::Vanilla),
+                )
+                .child(
+                    Button::new("loader-fabric")
+                        .label("Fabric")
+                        .selected(self.loader == Loader::Fabric),
+                )
+                .child(
+                    Button::new("loader-forge")
+                        .label("Forge")
+                        .selected(self.loader == Loader::Forge),
+                )
+                .child(
+                    Button::new("loader-neoforge")
+                        .label("NeoForge")
+                        .selected(self.loader == Loader::NeoForge),
+                )
+                .on_click(cx.listener({
+                    let backend_handle = self.backend_handle.clone();
+                    move |page, selected: &Vec<usize>, _, cx| {
+                        let last_loader = page.loader;
+                        match selected.first() {
+                            Some(0) => page.loader = Loader::Vanilla,
+                            Some(1) => page.loader = Loader::Fabric,
+                            Some(2) => page.loader = Loader::Forge,
+                            Some(3) => page.loader = Loader::NeoForge,
+                            _ => {},
+                        };
+                        if page.loader != last_loader {
+                            backend_handle.send(MessageToBackend::SetInstanceLoader {
+                                id: page.instance_id,
+                                loader: page.loader,
+                            });
+                            cx.notify();
+                        }
+                    }
+                })));
+
+        let runtime_content = v_flex()
+            .gap_4()
+            .size_full()
             .child(v_flex()
                 .gap_1()
                 .child(Checkbox::new("memory").label("Set Memory").checked(memory_override_enabled).on_click(cx.listener(|page, value, _, cx| {
@@ -262,11 +311,11 @@ impl Render for InstanceSettingsSubpage {
                 })))
                 .child(h_flex()
                     .gap_1()
-                    .child(NumberInput::new(&self.memory_min_input_state).max_w_64().small().suffix("MiB").disabled(!memory_override_enabled))
+                    .child(NumberInput::new(&self.memory_min_input_state).small().suffix("MiB").disabled(!memory_override_enabled))
                     .child("Min"))
                 .child(h_flex()
                     .gap_1()
-                    .child(NumberInput::new(&self.memory_max_input_state).max_w_64().small().suffix("MiB").disabled(!memory_override_enabled))
+                    .child(NumberInput::new(&self.memory_max_input_state).small().suffix("MiB").disabled(!memory_override_enabled))
                     .child("Max"))
                 )
             .child(v_flex()
@@ -281,7 +330,7 @@ impl Render for InstanceSettingsSubpage {
                         cx.notify();
                     }
                 })))
-                .child(div().max_w_64().child(Input::new(&self.jvm_flags_input_state).disabled(!jvm_flags_enabled)))
+                .child(Input::new(&self.jvm_flags_input_state).disabled(!jvm_flags_enabled))
             )
             .child(v_flex()
                 .gap_1()
@@ -295,7 +344,7 @@ impl Render for InstanceSettingsSubpage {
                         cx.notify();
                     }
                 })))
-                .child(div().max_w_64().child(Button::new("select_jvm_binary").success().label(jvm_binary_label).disabled(!jvm_binary_enabled).on_click(cx.listener(|this, _, window, cx| {
+                .child(Button::new("select_jvm_binary").success().label(jvm_binary_label).disabled(!jvm_binary_enabled).on_click(cx.listener(|this, _, window, cx| {
                     let receiver = cx.prompt_for_paths(PathPromptOptions {
                         files: true,
                         directories: false,
@@ -331,9 +380,13 @@ impl Render for InstanceSettingsSubpage {
                         });
                     });
                     this._select_file_task = add_from_file_task;
-                }))))
-            )
-            .child(Button::new("delete").max_w_64().label("Delete this instance").danger().on_click({
+                })))
+            );
+
+        let danger_content = v_flex()
+            .gap_4()
+            .size_full()
+            .child(Button::new("delete").label("Delete this instance").danger().on_click({
                 let instance = self.instance.clone();
                 let backend_handle = self.backend_handle.clone();
                 move |click: &ClickEvent, window, cx| {
@@ -352,6 +405,17 @@ impl Render for InstanceSettingsSubpage {
                 }
             }));
 
+        let sections = h_flex()
+            .size_full()
+            .justify_evenly()
+            .p_4()
+            .gap_4()
+            .child(basic_content)
+            .child(div().bg(cx.theme().border).h_full().w_0p5())
+            .child(runtime_content)
+            .child(div().bg(cx.theme().border).h_full().w_0p5())
+            .child(danger_content);
+
         v_flex()
             .p_4()
             .size_full()
@@ -361,7 +425,7 @@ impl Render for InstanceSettingsSubpage {
                 .border_1()
                 .rounded(theme.radius)
                 .border_color(theme.border)
-                .child(content)
+                .child(sections)
             )
     }
 }
