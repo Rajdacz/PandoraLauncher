@@ -829,7 +829,7 @@ impl Launcher {
             return Err(LoadJavaRuntimeError::UnableToFindExternalBinary(needed_version, found_versions.into_iter().collect()));
         }
 
-        let platform: Ustr = match (std::env::consts::OS, std::env::consts::ARCH) {
+        let mut platform: Ustr = match (std::env::consts::OS, std::env::consts::ARCH) {
             ("linux", "x86_64") => "linux".into(),
             ("linux", "x86") => "linux-i386".into(),
             ("macos", "x86_64") => "mac-os".into(),
@@ -847,6 +847,24 @@ impl Launcher {
             "jre-legacy".into()
         };
 
+        let runtimes = meta.fetch(&MojangJavaRuntimesMetadataItem).await?;
+
+        let mut runtime_platform = runtimes.platforms.get(&platform).ok_or(LoadJavaRuntimeError::UnknownPlatform)?;
+        let mut runtime_components = runtime_platform.components.get(&jre_component);
+
+        // Fall back to x86 runtime on mac-os, since Rosetta exists
+        let missing_runtime_component = runtime_components.map(Vec::is_empty).unwrap_or(true);
+        if missing_runtime_component && platform == "mac-os-arm64" {
+            platform = "mac-os".into();
+            runtime_platform = runtimes.platforms.get(&platform).ok_or(LoadJavaRuntimeError::UnknownPlatform)?;
+            runtime_components = runtime_platform.components.get(&jre_component);
+        }
+
+        let Some(runtime_components) = runtime_components else {
+            return Err(LoadJavaRuntimeError::UnknownComponentForPlatform);
+        };
+        let runtime_component = runtime_components.first().ok_or(LoadJavaRuntimeError::UnknownComponentForPlatform)?;
+
         if !crate::is_single_component_path(jre_component.as_str()) {
             return Err(LoadJavaRuntimeError::InvalidComponentPath);
         }
@@ -861,15 +879,6 @@ impl Launcher {
         };
 
         let fresh_install = !runtime_component_dir.exists();
-
-        let runtimes = meta.fetch(&MojangJavaRuntimesMetadataItem).await?;
-
-        let runtime_platform = runtimes.platforms.get(&platform).ok_or(LoadJavaRuntimeError::UnknownPlatform)?;
-        let runtime_components = runtime_platform
-            .components
-            .get(&jre_component)
-            .ok_or(LoadJavaRuntimeError::UnknownComponentForPlatform)?;
-        let runtime_component = runtime_components.first().ok_or(LoadJavaRuntimeError::UnknownComponentForPlatform)?;
 
         let runtime = meta.fetch(&MojangJavaRuntimeComponentMetadataItem {
             url: runtime_component.manifest.url,
@@ -1491,6 +1500,9 @@ async fn do_java_runtime_load(
                         return Err(LoadJavaRuntimeError::WrongHash);
                     }
 
+                    if let Some(parent) = path.parent() {
+                        _ = std::fs::create_dir_all(parent);
+                    }
                     tokio::fs::write(&path, bytes).await?;
 
                     #[cfg(unix)]
