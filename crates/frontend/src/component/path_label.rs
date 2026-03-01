@@ -69,7 +69,7 @@ struct PathLabelState {
 impl PathLabelState {
     fn new(path: Arc<Path>, is_folder: bool) -> Self {
         let mut fragments: Vec<PathFragment> = path.components().map(|comp| {
-            if matches!(comp, Component::RootDir) {
+            if let Component::RootDir = comp {
                 PathFragment {
                     text: SharedString::new_static("/"),
                     shaped: None,
@@ -80,8 +80,8 @@ impl PathLabelState {
                 PathFragment {
                     text: SharedString::new(comp.as_os_str().to_string_lossy()),
                     shaped: None,
-                    needs_divider: true,
-                    can_truncate: !matches!(comp, Component::Prefix(_))
+                    needs_divider: !matches!(comp,  Component::Prefix(_)),
+                    can_truncate: !matches!(comp,  Component::Prefix(_)),
                 }
             }
         }).collect();
