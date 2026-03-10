@@ -51,7 +51,7 @@ pub enum PageType {
 }
 
 impl PageType {
-    pub fn title(&self) -> SharedString {
+    pub fn title(&self, data: &DataEntities, cx: &App) -> SharedString {
         match self {
             PageType::Instances => ts!("instance.title"),
             PageType::Skins => ts!("skins.title"),
@@ -65,12 +65,15 @@ impl PageType {
             PageType::Import => "Import".into(),
             PageType::Syncing => ts!("instance.sync.label"),
             PageType::ModrinthProject { project_title, .. } => project_title.clone(),
-            PageType::InstancePage { name } => name.clone(),
+            PageType::InstancePage { name } => {
+                InstanceEntries::find_title_by_name(&data.instances, name, cx)
+                    .unwrap_or_else(|| name.clone())
+            },
         }
     }
 }
 
-#[derive(IntoElement, Clone)]
+#[derive(Clone)]
 pub enum LauncherPage {
     Instances(Entity<InstancesPage>),
     Skins(Entity<SkinsPage>),
@@ -81,8 +84,8 @@ pub enum LauncherPage {
     InstancePage(Entity<InstancePage>),
 }
 
-impl RenderOnce for LauncherPage {
-    fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
+impl LauncherPage {
+    fn render(self, data: &DataEntities, window: &mut Window, cx: &mut App) -> impl IntoElement {
         fn process(entity: Entity<impl Page>, window: &mut Window, cx: &mut App) -> (bool, AnyElement, AnyElement) {
             entity.update(cx, |page, cx| {
                 (page.scrollable(cx), page.controls(window, cx).into_any_element(), page.render(window, cx).into_any_element())
@@ -100,7 +103,7 @@ impl RenderOnce for LauncherPage {
         };
 
         let config = InterfaceConfig::get(cx);
-        let page_path = PagePath::new(config.main_page.clone(), config.page_path.clone());
+        let page_path = PagePath::new(data.clone(), config.main_page.clone(), config.page_path.clone());
         let title_bar = TitleBar::new(page_path, controls);
 
         if scrollable {
@@ -300,7 +303,7 @@ impl LauncherUI {
 }
 
 impl Render for LauncherUI {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let page_type = InterfaceConfig::get(cx).main_page.clone();
 
         let library_group = MenuGroup::new("Minecraft")
@@ -583,7 +586,7 @@ impl Render for LauncherUI {
         h_resizable("container")
             .with_state(&self.sidebar_state)
             .child(resizable_panel().size(px(self.default_sidebar_width)).size_range(px(130.)..px(200.)).child(sidebar))
-            .child(self.page.clone().into_any_element())
+            .child(self.page.clone().render(&self.data, window, cx).into_any_element())
     }
 }
 
