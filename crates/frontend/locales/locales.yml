@@ -1132,6 +1132,9 @@ settings:
     hide_server_addresses:
       en: Hide server addresses
       pl: Ukryj adresy serwerów
+    hide_usernames:
+      en: Hide usernames
+      pl: Ukryj nazwy użytkowników
   proxy:
     title:
       en: Proxy Settings

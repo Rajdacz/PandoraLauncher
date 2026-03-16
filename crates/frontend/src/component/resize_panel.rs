@@ -129,10 +129,17 @@ impl Element for ResizePanel {
 
         let mut line_origin = bounds.origin.clone();
         line_origin.x += size - RESIZE_PADDING;
-        let line_bounds = Bounds {
+        let mut line_bounds = Bounds {
             origin: line_origin,
             size: Size::new(RESIZE_PADDING*2 + RESIZE_WIDTH, bounds.size.height),
         };
+
+        if cfg!(target_os = "macos") && line_bounds.origin.y < px(28.0) {
+            let difference = px(28.0) - line_bounds.origin.y;
+            line_bounds.origin.y += difference;
+            line_bounds.size.height -= difference;
+        }
+
         Some(window.insert_hitbox(line_bounds, gpui::HitboxBehavior::BlockMouse))
     }
 
@@ -155,6 +162,7 @@ impl Element for ResizePanel {
         if state.drag_offset.is_some() {
             window.set_window_cursor_style(gpui::CursorStyle::ResizeLeftRight);
         }
+        let is_dragging = state.drag_offset.is_some();
         drop(state);
 
         let mut left_bounds = bounds.clone();
@@ -176,8 +184,12 @@ impl Element for ResizePanel {
             origin: line_origin,
             size: Size::new(RESIZE_WIDTH, bounds.size.height),
         };
-        // todo: use drag border if dragging
-        window.paint_quad(gpui::fill(line_bounds, cx.theme().border));
+        let border = if is_dragging {
+            cx.theme().drag_border
+        } else {
+            cx.theme().border
+        };
+        window.paint_quad(gpui::fill(line_bounds, border));
 
         window.set_cursor_style(gpui::CursorStyle::ResizeLeftRight, hitbox);
 
