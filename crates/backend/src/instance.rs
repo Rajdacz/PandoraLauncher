@@ -1,18 +1,19 @@
 use std::{
-    collections::HashSet, hash::{DefaultHasher, Hash, Hasher}, io::Read, path::Path, process::Child, sync::Arc
+    collections::HashSet, hash::{DefaultHasher, Hash, Hasher}, io::Read, path::Path, process::Child, sync::Arc, time::{Instant, SystemTime, UNIX_EPOCH}
 };
 
 use anyhow::Context;
 use base64::Engine;
 use bridge::{
     instance::{
-        ContentSummary, ContentUpdateContext, ContentUpdateStatus, InstanceContentID, InstanceContentSummary, InstanceID, InstanceServerSummary, InstanceStatus, InstanceWorldSummary
+        ContentSummary, ContentUpdateContext, ContentUpdateStatus, InstanceContentID, InstanceContentSummary, InstanceID, InstancePlaytime, InstanceServerSummary, InstanceStatus, InstanceWorldSummary
     }, keep_alive::KeepAliveHandle, message::{BridgeDataLoadState, MessageToFrontend}, notify_signal::{KeepAliveNotifySignal, KeepAliveNotifySignalHandle}
 };
 use futures::FutureExt;
 use relative_path::RelativePath;
 use rustc_hash::FxHashSet;
 use schema::{auxiliary::{AuxDisabledChildren, AuxiliaryContentMeta}, instance::InstanceConfiguration, loader::Loader};
+use serde::{Deserialize, Serialize};
 use strum::IntoEnumIterator;
 use thiserror::Error;
 
@@ -30,9 +31,11 @@ pub struct Instance {
     pub name: Ustr,
     pub icon: Option<Arc<[u8]>>,
     pub configuration: Persistent<InstanceConfiguration>,
+    pub stats: Persistent<InstanceStats>,
 
     pub launch_keepalive: Option<KeepAliveHandle>,
     pub processes: Vec<Child>,
+    session_started_at: Option<Instant>,
 
     pub worlds_state: BridgeDataLoadState,
     dirty_worlds: FolderChanges,
@@ -47,6 +50,14 @@ pub struct Instance {
     content_generation: usize,
 
     pub content_state: enum_map::EnumMap<ContentFolder, ContentFolderState>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct InstanceStats {
+    pub total_playtime_secs: u64,
+    pub session_count: u64,
+    #[serde(default)]
+    pub last_played_unix_ms: Option<i64>,
 }
 
 #[derive(Debug)]
@@ -127,6 +138,7 @@ impl Instance {
         self.name = path.file_name().unwrap().to_string_lossy().into_owned().into();
         self.root_path = path.into();
         self.configuration = Persistent::load_or(path.join("info_v1.json").into(), self.configuration.get().clone());
+        self.stats = Persistent::load_or(path.join("stats_v1.json").into(), self.stats.get().clone());
 
         let mut dot_minecraft_path = path.to_owned();
         dot_minecraft_path.push(".minecraft");
@@ -636,58 +648,14 @@ impl Instance {
                     summaries.push(summary);
                 }
             }
-            if check_alternative {
-                alternative_dirty.insert(alternate_path);
-            }
+
+            alternative_dirty.insert(alternate_path);
         }
 
         for old_summary in &*last {
             if !dirty.contains(&old_summary.path) && !alternative_dirty.contains(&*old_summary.path) {
                 if old_summary.path.exists() {
                     summaries.push(old_summary.clone());
-                } else {
-                    // Check if the file has been renamed to .disabled and we haven't been informed yet
-                    // This isn't necessary because we *will* be informed of the rename
-                    // But checking this here will prevent flickering in the UI
-
-                    let mut alternate_path = old_summary.path.to_path_buf();
-                    if old_summary.enabled {
-                        alternate_path.add_extension("disabled");
-                    } else {
-                        alternate_path.set_extension("");
-                    };
-
-                    if alternate_path.exists() {
-                        let enabled = !old_summary.enabled;
-
-                        let Some(filename) = alternate_path.file_name().and_then(|s| s.to_str()) else {
-                            continue;
-                        };
-
-                        let filename_without_disabled = if !enabled {
-                            &filename[..filename.len()-".disabled".len()]
-                        } else {
-                            filename
-                        };
-
-                        let mut hasher = DefaultHasher::new();
-                        filename_without_disabled.hash(&mut hasher);
-                        let filename_hash = hasher.finish();
-
-                        summaries.push(InstanceContentSummary {
-                            content_summary: old_summary.content_summary.clone(),
-                            id: InstanceContentID::dangling(),
-                            lowercase_search_keys: old_summary.lowercase_search_keys.clone(),
-                            filename: filename.into(),
-                            filename_hash,
-                            path: alternate_path.into(),
-                            enabled,
-                            content_source: old_summary.content_source.clone(),
-                            update: old_summary.update.clone(),
-                            disabled_children: old_summary.disabled_children.clone(),
-                        });
-                    }
-
                 }
             }
         }
@@ -715,6 +683,7 @@ impl Instance {
         } else {
             Persistent::try_load(info_path.clone())?
         };
+        let stats = Persistent::load(path.join("stats_v1.json").into());
 
         let mut dot_minecraft_path = path.to_owned();
         dot_minecraft_path.push(".minecraft");
@@ -738,9 +707,11 @@ impl Instance {
             name: path.file_name().unwrap().to_string_lossy().into_owned().into(),
             icon,
             configuration: instance_info,
+            stats,
 
             launch_keepalive: None,
             processes: Vec::new(),
+            session_started_at: None,
 
             worlds_state: BridgeDataLoadState::default(),
             dirty_worlds: FolderChanges::all_dirty(),
@@ -839,6 +810,51 @@ impl Instance {
         self.configuration = new.configuration;
     }
 
+    pub fn begin_session(&mut self) {
+        if self.session_started_at.is_some() {
+            return;
+        }
+
+        self.session_started_at = Some(Instant::now());
+        let now = unix_time_ms_now();
+        self.stats.modify(|stats| {
+            stats.session_count = stats.session_count.saturating_add(1);
+            stats.last_played_unix_ms = now;
+        });
+    }
+
+    pub fn finish_session(&mut self) {
+        let Some(started_at) = self.session_started_at.take() else {
+            return;
+        };
+
+        let elapsed = started_at.elapsed().as_secs();
+        self.stats.modify(|stats| {
+            stats.total_playtime_secs = stats.total_playtime_secs.saturating_add(elapsed);
+        });
+    }
+
+    pub fn playtime(&mut self) -> InstancePlaytime {
+        let stats = self.stats.get().clone();
+        let current_session_secs = self.current_session_secs();
+
+        InstancePlaytime {
+            total_secs: stats.total_playtime_secs.saturating_add(current_session_secs),
+            current_session_secs,
+            last_played_unix_ms: stats.last_played_unix_ms,
+        }
+    }
+
+    pub fn has_active_session(&self) -> bool {
+        self.session_started_at.is_some()
+    }
+
+    fn current_session_secs(&self) -> u64 {
+        self.session_started_at
+            .map(|started_at| started_at.elapsed().as_secs())
+            .unwrap_or(0)
+    }
+
     pub fn status(&self) -> InstanceStatus {
         if !self.processes.is_empty() {
             InstanceStatus::Running
@@ -857,6 +873,7 @@ impl Instance {
             root_path: self.resolve_real_root_path(),
             dot_minecraft_folder: self.dot_minecraft_path.clone(),
             configuration: self.configuration.get().clone(),
+            playtime: self.playtime(),
             status: self.status(),
         }
     }
@@ -875,8 +892,19 @@ impl Instance {
     }
 }
 
+fn unix_time_ms_now() -> Option<i64> {
+    let duration = SystemTime::now().duration_since(UNIX_EPOCH).ok()?;
+    i64::try_from(duration.as_millis()).ok()
+}
+
 fn create_instance_content_summary(path: &Path, mod_metadata_manager: &Arc<ModMetadataManager>, for_loader: Loader, for_version: Ustr) -> Option<InstanceContentSummary> {
     if !path.is_file() {
+        // Special case for loading a resourcepack folder
+        if let Ok(pack_mcmeta_bytes) = std::fs::read(path.join("pack.mcmeta")) {
+            let pack_png_bytes = std::fs::read(path.join("pack.png")).ok();
+            return try_load_resourcepack_folder(&pack_mcmeta_bytes, pack_png_bytes.as_deref(), path);
+        }
+
         return None;
     }
     let Some(filename) = path.file_name().and_then(|s| s.to_str()) else {
@@ -939,11 +967,51 @@ fn create_instance_content_summary(path: &Path, mod_metadata_manager: &Arc<ModMe
         filename,
         filename_hash,
         path: path.into(),
+        can_toggle: true,
         enabled,
         content_source,
-        update: ContentUpdateContext::new(update_status, for_loader, for_version),
+        update: ContentUpdateContext::new(update_status, for_loader, for_version.as_str()),
         disabled_children: Arc::new(disabled_children),
     })
+}
+
+fn try_load_resourcepack_folder(pack_mcmeta_bytes: &[u8], pack_png_bytes: Option<&[u8]>, path: &Path) -> Option<InstanceContentSummary> {
+    let Some(filename) = path.file_name().and_then(|s| s.to_str()) else {
+        return None;
+    };
+
+    let summary = ModMetadataManager::create_resource_pack(pack_mcmeta_bytes, pack_png_bytes)?;
+
+    let mut hasher = DefaultHasher::new();
+    filename.hash(&mut hasher);
+    let filename_hash = hasher.finish();
+
+    let filename: Arc<str> = filename.into();
+    let lowercase_filename = filename.to_lowercase();
+    let lowercase_filename = if lowercase_filename == &*filename {
+        filename.clone()
+    } else {
+        lowercase_filename.into()
+    };
+
+    let lowercase_search_keys = summary.id.clone().into_iter()
+        .chain(summary.name.clone().into_iter())
+        .chain(std::iter::once(lowercase_filename))
+        .collect();
+
+    return Some(InstanceContentSummary {
+        content_summary: summary,
+        id: InstanceContentID::dangling(),
+        lowercase_search_keys,
+        filename,
+        filename_hash,
+        path: path.into(),
+        can_toggle: false,
+        enabled: true,
+        content_source: schema::content::ContentSource::Manual,
+        update: ContentUpdateContext::new(ContentUpdateStatus::ManualInstall, Loader::Unknown, ""),
+        disabled_children: Default::default(),
+    });
 }
 
 fn read_disabled_children_for(

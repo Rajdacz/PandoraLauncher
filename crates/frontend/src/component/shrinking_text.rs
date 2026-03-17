@@ -48,7 +48,7 @@ impl Element for ShrinkingText {
                     width
                 } else {
                     match available_space.width {
-                        AvailableSpace::Definite(pixels) => pixels,
+                        AvailableSpace::Definite(pixels) => pixels.min(shaped.width.ceil()),
                         AvailableSpace::MinContent => Pixels::ZERO,
                         AvailableSpace::MaxContent => shaped.width.ceil(),
                     }

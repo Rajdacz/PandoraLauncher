@@ -497,6 +497,12 @@ instance:
   servers:
     en: Servers
     pl: Serwery
+  total_playtime:
+    en: Total Playtime
+    pl: Czas Gry
+  current_session:
+    en: Current Session
+    pl: Aktualna Sesja
   vanilla:
     en: Vanilla
   unable_to_find:
