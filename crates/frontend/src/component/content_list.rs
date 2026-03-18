@@ -727,7 +727,7 @@ fn create_descriptions(name: Option<Arc<str>>, version: Arc<str>, authors: Arc<s
                 .overflow_x_hidden()
                 .line_height(relative(1.0))
                 .child(SharedString::from(filename))
-                .child(styled_text);
+                .child(div().line_clamp(2).child(styled_text));
             return (description1, None);
         }
 
