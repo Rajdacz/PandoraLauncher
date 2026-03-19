@@ -93,7 +93,7 @@ pub fn try_load_from_other_launcher_formats(folder: &Path) -> Option<InstanceCon
     let multimc_instance_cfg = folder.join("instance.cfg");
     let multimc_mmc_pack = folder.join("mmc-pack.json");
     if multimc_instance_cfg.exists() && multimc_mmc_pack.exists() {
-        return try_load_from_multimc(&multimc_instance_cfg, &multimc_mmc_pack);
+        return Some(try_load_from_multimc(&multimc_instance_cfg, &multimc_mmc_pack)?.0);
     }
 
     None
