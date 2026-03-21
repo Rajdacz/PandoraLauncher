@@ -1783,11 +1783,150 @@ impl BackendState {
                     self.send.send_error("Error while saving skin, see logs for more details");
                 }
             },
+            MessageToBackend::StealPlayerSkin { username } => {
+                let lookup_url = format!(
+                    "https://api.mojang.com/minecraft/profile/lookup/name/{}",
+                    username
+                );
+                let response = match self.http_client.get(&lookup_url).send().await {
+                    Ok(r) => r,
+                    Err(err) => {
+                        log::error!("StealSkin: failed to reach Mojang API: {:?}", err);
+                        self.send.send_error(format!("Could not find player '{}'", username));
+                        return;
+                    }
+                };
+                let body = match response.text().await {
+                    Ok(b) => b,
+                    Err(err) => {
+                        log::error!("StealSkin: failed to read Mojang response: {:?}", err);
+                        self.send.send_error("Error reading Mojang response");
+                        return;
+                    }
+                };
+                let profile_lookup: serde_json::Value = match serde_json::from_str(&body) {
+                    Ok(v) => v,
+                    Err(_) => {
+                        self.send.send_error(format!("Player '{}' not found", username));
+                        return;
+                    }
+                };
+                let uuid = match profile_lookup["id"].as_str() {
+                    Some(id) => id.to_owned(),
+                    None => {
+                        self.send.send_error(format!("Player '{}' not found", username));
+                        return;
+                    }
+                };
+
+                let session_url = format!(
+                    "https://sessionserver.mojang.com/session/minecraft/profile/{}",
+                    uuid
+                );
+                let response = match self.http_client.get(&session_url).send().await {
+                    Ok(r) => r,
+                    Err(err) => {
+                        log::error!("StealSkin: failed to reach session server: {:?}", err);
+                        self.send.send_error("Error reaching Mojang session server");
+                        return;
+                    }
+                };
+                let body = match response.text().await {
+                    Ok(b) => b,
+                    Err(err) => {
+                        log::error!("StealSkin: failed to read session profile: {:?}", err);
+                        self.send.send_error("Error reading player profile");
+                        return;
+                    }
+                };
+
+                let skin_url = match Self::extract_skin_url_from_profile(&body) {
+                    Some(url) => url,
+                    None => {
+                        self.send.send_error(format!("Player '{}' has no skin", username));
+                        return;
+                    }
+                };
+
+                let url = match url::Url::parse(&*skin_url) {
+                    Ok(url) => url,
+                    Err(err) => {
+                        log::error!("StealSkin: invalid skin URL: {}", err);
+                        self.send.send_error("StealSkin: invalid skin URL");
+                        return;
+                    }
+                };
+
+                let filename = format!("{}.png", username);
+
+                let response = match self.redirecting_http_client.get(url).send().await {
+                    Ok(r) => r,
+                    Err(err) => {
+                        log::error!("StealSkin: error while requesting skin: {:?}", err);
+                        self.send.send_error("Error while requesting skin, see logs for more details");
+                        return;
+                    }
+                };
+                let bytes = match response.bytes().await {
+                    Ok(bytes) => bytes.to_vec(),
+                    Err(err) => {
+                        log::error!("StealSkin: error while downloading skin: {:?}", err);
+                        self.send.send_error("Error while downloading skin, see logs for more details");
+                        return;
+                    }
+                };
+
+                let image = match image::load_from_memory_with_format(&bytes, image::ImageFormat::Png) {
+                    Ok(image) => image,
+                    Err(_) => {
+                        self.send.send_error("Stolen skin is not a valid PNG image");
+                        return;
+                    }
+                };
+                if !SkinManager::is_valid_size(&image) {
+                    self.send.send_error("Stolen skin has invalid dimensions. Must be 64x64 or 64x32.");
+                    return;
+                }
+
+                let filename = sanitize_filename::sanitize_with_options(filename, sanitize_filename::Options { windows: true, ..Default::default() });
+
+                let mut path = self.directories.skin_library_dir.join(&filename);
+                if path.exists() {
+                    for i in 1..32 {
+                        let new_filename = format!("{filename} ({i})");
+                        let new_path = self.directories.skin_library_dir.join(&new_filename);
+                        if !new_path.exists() {
+                            path = new_path;
+                            break;
+                        }
+                    }
+                }
+
+                if let Err(err) = crate::write_safe(&path, &bytes) {
+                    log::error!("StealSkin: error while saving skin: {:?}", err);
+                    self.send.send_error("Error while saving skin, see logs for more details");
+                }
+            },
             MessageToBackend::Login { account, modal_action } => {
                 self.login_flow(&modal_action, Some(account)).await;
                 modal_action.set_finished();
             },
         }
+    }
+
+    fn extract_skin_url_from_profile(profile_json: &str) -> Option<Arc<str>> {
+        use base64::Engine;
+        let parsed: serde_json::Value = serde_json::from_str(profile_json).ok()?;
+        for prop in parsed["properties"].as_array()? {
+            if prop["name"].as_str() == Some("textures") {
+                let encoded = prop["value"].as_str()?;
+                let decoded = base64::engine::general_purpose::STANDARD.decode(encoded).ok()?;
+                let textures: serde_json::Value = serde_json::from_slice(&decoded).ok()?;
+                let url = textures["textures"]["SKIN"]["url"].as_str()?;
+                return Some(url.into());
+            }
+        }
+        None
     }
 
     pub async fn get_minecraft_profile(&self, account: Uuid) -> Option<MinecraftProfileResponse> {
